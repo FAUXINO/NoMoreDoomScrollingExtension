@@ -60,8 +60,8 @@ export function loadFixtures(siteDir) {
     .filter((f) => f.endsWith('.html'))
     .map((f) => {
       const html = readFileSync(join(dir, f), 'utf8');
-      const url = (html.match(/<!--\s*url:\s*(\S+)\s*-->/) || [])[1];
-      const expectVisible = [...html.matchAll(/<!--\s*expect-visible:\s*(.+?)\s*-->/g)].map((m) => m[1]);
+      const url = (html.match(/<!--\s*url:\s*(\S+)\s*-->/i) || [])[1];
+      const expectVisible = [...html.matchAll(/<!--\s*expect-visible:\s*(.+?)\s*-->/gi)].map((m) => m[1]);
       return { file: join('fixtures', siteDir, f), html, url, expectVisible };
     });
 }

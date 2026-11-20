@@ -16,6 +16,12 @@ problém najít a nahlásit, abych mohl selektory opravit.
 
 ### Instagram: „jeden reel ze zprávy“
 
+> **Zjištěno 2026-11-20 (mobilní web, Firefox s iPhone UA):** reel ze zprávy se otevírá
+> jako **overlay uvnitř `/direct/t/ID/`**. URL se nemění při otevření ani při swipu
+> (žádný pushState/replaceState) a viewer má předem načtených **9 `<video>`**.
+> Režim jednoho reelu proto nesmí stát jen na URL `/reel/ID`; viewer je potřeba poznat
+> podle obsahu stránky. (Úprava čeká na snapshoty pořízené přes `scripts/snapshot-console.js`.)
+
 | Příznak | Pravděpodobná příčina |
 |---|---|
 | Po reelu ze zprávy jde swipovat na další | viewer má nový scroll kontejner (bez `overflow-y:auto/scroll`) nebo další položky nemají vlastní `<video>`. Pomůže snapshot vieweru. |

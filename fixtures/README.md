@@ -12,18 +12,23 @@ web, nový snapshot ukáže, co přesně se rozbilo.
    Pokud v seznamu iPhone není: „Upravit seznam…“ → zaškrtni nějaký iPhone.
 3. Stránku znovu načti (`F5`), aby web poslal mobilní verzi.
 4. Pomalu odscrolluj 3–5 obrazovek dolů, ať se načte víc obsahu (Reels, navrhované příspěvky…).
-5. Otevři Inspektor (`Ctrl+Shift+C`), v panelu HTML klikni pravým tlačítkem na úplně
-   horní řádek `<html …>` → **Kopírovat** → **Vnější HTML**.
-6. V terminálu ve složce projektu ulož schránku do souboru a na začátek přidej URL:
+5. Ulož snapshot skriptem v konzoli. **Nepoužívej kopírování přes schránku**
+   (Inspektor → Kopírovat → Vnější HTML): velké stránky se tak uříznou na 100 KB
+   a zůstane jen začátek `<head>` bez obsahu.
+   - V terminálu ve složce projektu zkopíruj skript do schránky:
+     `wl-copy < scripts/snapshot-console.js`
+     (balíček `wl-clipboard`: `sudo dnf install wl-clipboard`; na X11 `xclip -selection clipboard < …`).
+   - Ve Firefoxu otevři konzoli (`Ctrl+Shift+K`), vlož skript a stiskni Enter.
+     Firefox napoprvé chce, abys do konzole napsal `allow pasting` (nebo
+     `povolit vkládání`) a skript vložil znovu.
+   - Zadej název souboru (např. `dm-reel-open.html`). Soubor se uloží do Stažených.
+     URL stránky skript zapíše na první řádek sám.
+6. Přesuň soubor do projektu:
 
    ```bash
    mkdir -p fixtures/instagram
-   { echo '<!-- url: https://www.instagram.com/ -->'; wl-paste; } > fixtures/instagram/feed.html
+   mv "$(xdg-user-dir DOWNLOAD)/dm-reel-open.html" fixtures/instagram/
    ```
-
-   (`wl-paste` je z balíčku `wl-clipboard`: `sudo dnf install wl-clipboard`.
-   Na X11 místo něj `xclip -o -selection clipboard`.)
-   URL v komentáři musí být adresa stránky, ze které snapshot je (podle ní se zapnou pravidla).
 
 7. Volitelně přidej pod první řádek, co musí zůstat vidět (CSS selektor), např.:
 
@@ -39,11 +44,12 @@ web, nový snapshot ukáže, co přesně se rozbilo.
 |---|---|
 | YouTube | `home.html` (m.youtube.com/), `search.html` (výsledky hledání), `channel.html` (stránka kanálu), `watch.html` (přehrávač) |
 | Instagram | `feed.html` (/), `profile.html` (profil kamaráda), `explore.html` (/explore/), `direct-thread.html` (konverzace s posdíleným reelem), `dm-reel-open.html` (reel otevřený ze zprávy), `dm-reel-next.html` (po swipu na další) |
-
-U snapshotů reelů použij v prvním komentáři **URL, která je zrovna v adresním řádku**
-(po otevření i po swipu se může lišit). Skript přitom ve Violentmonkey vypni, jinak by
-stránku zablokoval. Postup s logováním navigace je v [MAINTENANCE.md](../MAINTENANCE.md).
 | Facebook | `feed.html` (m.facebook.com/), `profile.html`, `video.html` (záložka Video) |
+
+U snapshotů reelů nech skript No Shorts ve Violentmonkey **vypnutý**, jinak by
+viewer upravil nebo zablokoval. Snapshot ulož ve chvíli, kdy je reel otevřený
+a hraje (u `dm-reel-next.html` až po swipu na další). Postup s logováním navigace
+je v [MAINTENANCE.md](../MAINTENANCE.md).
 
 ## Soukromí
 
