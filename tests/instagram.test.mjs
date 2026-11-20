@@ -7,11 +7,17 @@ const cfg = cfgFor('instagram');
 const u = (path) => new URL('https://www.instagram.com' + path);
 
 test('Instagram: blokované URL', () => {
-  for (const p of ['/reels/', '/reels/C1abc/', '/reel/C1abc/', '/reel/C1abc/?igsh=x', '/nekdo/reels/']) {
-    assert.equal(instagramSite.blocked(u(p), cfg), 'Instagram Reels', p);
+  for (const p of ['/reels/', '/nekdo/reels/', '/reels/audio/123/']) {
+    assert.equal(instagramSite.blocked(u(p), cfg, {}), 'Instagram Reels', p);
   }
   for (const p of ['/', '/p/C1abc/', '/nekdo/', '/direct/inbox/', '/explore/', '/stories/nekdo/123/', '/reelsfan/']) {
-    assert.equal(instagramSite.blocked(u(p), cfg), null, p);
+    assert.equal(instagramSite.blocked(u(p), cfg, {}), null, p);
+  }
+});
+
+test('Instagram: allowSingleReel=false blokuje i jednotlivý reel', () => {
+  for (const p of ['/reel/C1abc/', '/reels/C1abc/', '/reel/C1abc/?igsh=x']) {
+    assert.equal(instagramSite.blocked(u(p), { ...cfg, allowSingleReel: false }, {}), 'Instagram Reels', p);
   }
 });
 

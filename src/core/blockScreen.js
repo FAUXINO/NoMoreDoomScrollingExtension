@@ -24,16 +24,17 @@ export function isBlocked(doc) {
   return doc.documentElement.hasAttribute(BLOCKED_ATTR);
 }
 
-export function showBlock(doc, { reason, homeUrl }) {
+export function showBlock(doc, { reason, homeUrl, homeLabel = 'Zpět na hlavní stránku' }) {
   const html = doc.documentElement;
   if (!html.hasAttribute(BLOCKED_ATTR)) logInfo('zablokováno:', reason, doc.location && doc.location.href);
   html.setAttribute(BLOCKED_ATTR, reason);
+  const key = reason + '|' + (homeUrl || '');
   let box = doc.getElementById(BLOCK_ID);
-  if (!box || box.dataset.reason !== reason) {
+  if (!box || box.dataset.key !== key) {
     if (box) box.remove();
     box = doc.createElement('div');
     box.id = BLOCK_ID;
-    box.dataset.reason = reason;
+    box.dataset.key = key;
     const title = doc.createElement('p');
     title.className = 'ns-title';
     title.textContent = 'Zablokováno';
@@ -45,7 +46,7 @@ export function showBlock(doc, { reason, homeUrl }) {
       const btn = doc.createElement('a');
       btn.className = 'ns-btn';
       btn.href = homeUrl;
-      btn.textContent = 'Zpět na hlavní stránku';
+      btn.textContent = homeLabel;
       box.append(btn);
     }
   }

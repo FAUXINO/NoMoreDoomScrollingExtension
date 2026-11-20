@@ -19,6 +19,14 @@ function safe(where, fn, fallback) {
   }
 }
 
+// blocked() smí vrátit text důvodu, nebo objekt { reason, homeUrl?, homeLabel? }.
+function normalizeBlock(res, site, url) {
+  if (!res) return null;
+  const homeUrl = site.home ? site.home(url) : null;
+  if (typeof res === 'string') return { reason: res, homeUrl };
+  return { homeUrl, ...res };
+}
+
 function runSite(win, site, cfg) {
   const doc = win.document;
   const hide = (el, reason) => hideEl(el, site.id + ': ' + reason);
@@ -30,14 +38,19 @@ function runSite(win, site, cfg) {
 
   let url = new URL(win.location.href);
   let mediaTimer = null;
+  // Stav modulu po dobu života stránky (např. zamčené ID reelu). Modul do něj smí zapsat
+  // forceBlock = { reason, homeUrl, homeLabel }, když zjistí blokovaný obsah bez změny URL.
+  const state = { forceBlock: null };
+
+  const pageFlags = () => safe(site.id + '.pageFlags', () => (site.pageFlags ? site.pageFlags(url, cfg, state) : []), []);
 
   const applyUrl = () => {
     url = new URL(win.location.href);
-    const flags = safe(site.id + '.pageFlags', () => (site.pageFlags ? site.pageFlags(url, cfg) : []), []);
-    setPageFlags(doc, flags);
-    const reason = safe(site.id + '.blocked', () => site.blocked(url, cfg), null);
-    if (reason) {
-      showBlock(doc, { reason, homeUrl: site.home ? site.home(url) : null });
+    const res = safe(site.id + '.blocked', () => site.blocked(url, cfg, state), null) || state.forceBlock;
+    setPageFlags(doc, pageFlags());
+    const block = normalizeBlock(res, site, url);
+    if (block) {
+      showBlock(doc, block);
       // Dokud je stránka zablokovaná, pravidelně zastavovat přehrávání (autoplay).
       if (!mediaTimer) mediaTimer = win.setInterval(() => silenceMedia(doc), 700);
     } else {
@@ -49,16 +62,22 @@ function runSite(win, site, cfg) {
     }
   };
 
+  const onUrlChange = () => {
+    state.forceBlock = null;
+    applyUrl();
+  };
+
   const scanRoots = (roots) => {
     ensureCss();
     if (isBlocked(doc)) applyUrl(); // obnoví overlay, kdyby ho stránka odstranila
-    else setPageFlags(doc, safe(site.id + '.pageFlags', () => (site.pageFlags ? site.pageFlags(url, cfg) : []), []));
-    if (site.scan) safe(site.id + '.scan', () => site.scan(roots, { cfg, url, hide }));
+    else setPageFlags(doc, pageFlags());
+    if (site.scan) safe(site.id + '.scan', () => site.scan(roots, { cfg, url, hide, state }));
+    if (state.forceBlock && !isBlocked(doc)) applyUrl();
     if (isDebug()) for (const root of roots) applyRules(root, rules, hide);
   };
 
   applyUrl();
-  const checkUrl = watchUrl(win, applyUrl);
+  const checkUrl = watchUrl(win, onUrlChange);
   watchMutations(win, { onMutation: checkUrl, onBatch: scanRoots });
 
   const initialScan = () => scanRoots([doc.body || doc.documentElement]);

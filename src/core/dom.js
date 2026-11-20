@@ -67,6 +67,19 @@ export function climbBelow(el, boundarySel, maxUp = 8) {
   return null;
 }
 
+// Vrátí „větev“ elementu el vzhledem k anchor: potomka nejbližšího společného předka,
+// který obsahuje el (ne anchor). Typicky sousední položka seznamu (další reel ve vieweru).
+export function siblingBranch(anchor, el) {
+  if (!anchor || !el || anchor === el || anchor.contains(el) || el.contains(anchor)) return null;
+  let cur = el;
+  while (cur.parentElement && !cur.parentElement.contains(anchor)) cur = cur.parentElement;
+  return cur.parentElement ? cur : null;
+}
+
+export function unhideEl(el) {
+  if (el && el.removeAttribute) el.removeAttribute(HIDDEN_ATTR);
+}
+
 // Je element v navigaci / liště záložek? (tam nechceme skrývat celé „jednotky“)
 export function inNavigation(el) {
   return !!el.closest('nav, [role="navigation"], [role="tablist"], [role="banner"]');

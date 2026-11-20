@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         No Shorts
 // @namespace    https://github.com/FAUXINO/NoMoreDoomScrollingExtension
-// @version      0.1.0
+// @version      0.2.0
 // @description  Skryje Reels, Shorts a krátká videa na Instagramu, Facebooku, YouTube a TikToku (mobilní Safari).
 // @author       FAUXINO
 // @match        *://www.youtube.com/*
@@ -38,7 +38,8 @@
 
     instagram: {
       enabled: true,
-      blockReels: true, // blokovat /reels/ a /reel/…, skrýt Reels ve feedu, navigaci a profilech
+      blockReels: true, // blokovat záložku /reels/, skrýt Reels ve feedu, navigaci a profilech
+      allowSingleReel: true, // reel ze zprávy/odkazu (/reel/ID) se přehraje, ale jen ten jeden – další jsou zablokované
       hideExplore: true, // skrýt mřížku na /explore/ (vyhledávání zůstane)
       hideSuggested: true, // skrýt navrhované příspěvky a účty ve feedu
     },
@@ -94,10 +95,12 @@
   //   id            klíč v CONFIG (např. 'youtube')
   //   matches(host) true, pokud modul patří k danému hostname
   //   home(url)     URL hlavní stránky pro tlačítko na obrazovce „Zablokováno“ (nebo null)
-  //   blocked(url, cfg)     důvod blokace celé stránky (string) nebo null
-  //   pageFlags(url, cfg)   pole příznaků do html[data-noshorts] (pro CSS podle stránky)
-  //   rules(cfg)            [{ css, reason }] – statická pravidla (CSS se vloží hned při startu)
-  //   scan(roots, ctx)      dynamické skrývání (text, hledání kontejneru); ctx = { cfg, url, hide }
+  //   blocked(url, cfg, state)    důvod blokace celé stránky: string, { reason, homeUrl?, homeLabel? }, nebo null
+  //   pageFlags(url, cfg, state)  pole příznaků do html[data-noshorts] (pro CSS podle stránky)
+  //   rules(cfg)                  [{ css, reason }] – statická pravidla (CSS se vloží hned při startu)
+  //   scan(roots, ctx)            dynamické skrývání; ctx = { cfg, url, hide, state }
+  // `state` je objekt modulu po dobu života stránky (např. zamčené ID reelu). Nastavením
+  // state.forceBlock = { reason, … } může scan zablokovat stránku i bez změny URL.
   const SITES = [];
 
   function registerSite(site) {
@@ -202,6 +205,19 @@
     return null;
   }
 
+  // Vrátí „větev“ elementu el vzhledem k anchor: potomka nejbližšího společného předka,
+  // který obsahuje el (ne anchor). Typicky sousední položka seznamu (další reel ve vieweru).
+  function siblingBranch(anchor, el) {
+    if (!anchor || !el || anchor === el || anchor.contains(el) || el.contains(anchor)) return null;
+    let cur = el;
+    while (cur.parentElement && !cur.parentElement.contains(anchor)) cur = cur.parentElement;
+    return cur.parentElement ? cur : null;
+  }
+
+  function unhideEl(el) {
+    if (el && el.removeAttribute) el.removeAttribute(HIDDEN_ATTR);
+  }
+
   // Je element v navigaci / liště záložek? (tam nechceme skrývat celé „jednotky“)
   function inNavigation(el) {
     return !!el.closest('nav, [role="navigation"], [role="tablist"], [role="banner"]');
@@ -268,16 +284,17 @@
     return doc.documentElement.hasAttribute(BLOCKED_ATTR);
   }
 
-  function showBlock(doc, { reason, homeUrl }) {
+  function showBlock(doc, { reason, homeUrl, homeLabel = 'Zpět na hlavní stránku' }) {
     const html = doc.documentElement;
     if (!html.hasAttribute(BLOCKED_ATTR)) logInfo('zablokováno:', reason, doc.location && doc.location.href);
     html.setAttribute(BLOCKED_ATTR, reason);
+    const key = reason + '|' + (homeUrl || '');
     let box = doc.getElementById(BLOCK_ID);
-    if (!box || box.dataset.reason !== reason) {
+    if (!box || box.dataset.key !== key) {
       if (box) box.remove();
       box = doc.createElement('div');
       box.id = BLOCK_ID;
-      box.dataset.reason = reason;
+      box.dataset.key = key;
       const title = doc.createElement('p');
       title.className = 'ns-title';
       title.textContent = 'Zablokováno';
@@ -289,7 +306,7 @@
         const btn = doc.createElement('a');
         btn.className = 'ns-btn';
         btn.href = homeUrl;
-        btn.textContent = 'Zpět na hlavní stránku';
+        btn.textContent = homeLabel;
         box.append(btn);
       }
     }
@@ -519,11 +536,29 @@
   });
 
   // ---- src/sites/instagram.js ----
-  // Instagram (mobilní web). Selektory: href (/reel/, /reels/, /p/), <article>, aria-label, text CZ/EN.
+  // Instagram (mobilní web). Selektory: href (/reel/, /reels/, /p/), <article>, <video>,
+  // role="dialog", aria-label, text CZ/EN. Žádné generované CSS třídy.
+  //
+  // „Jeden reel ze zprávy“ (CONFIG.instagram.allowSingleReel):
+  // Reel otevřený přímo (/reel/ID nebo /reels/ID – ze zpráv nebo z odkazu) se přehraje.
+  // Další reely se zobrazit nedají. Ochranu tvoří tři vrstvy:
+  //  1. zámek ID – první ID se zapamatuje, jiné ID v URL → „Zablokováno“ s tlačítkem do zpráv,
+  //  2. sousední položky ve vieweru (jiné <video>, odkazy na jiná ID) se skryjí,
+  //  3. scroll kontejnery kolem přehrávaného videa dostanou overflow:hidden (nejde swipovat).
+  // Pokud se obsah aktuální položky změní na jiný reel bez změny URL → také „Zablokováno“.
 
   // /reels/, /reels/ID/, /reel/ID/, /uzivatel/reels/
   const IG_REELS_PATH = /^\/(?:[^/]+\/)?reels?(?:\/|$)/i;
+  // Jeden konkrétní reel: /reel/ID/ nebo /reels/ID/
+  const IG_SINGLE_REEL_PATH = /^\/reels?\/([A-Za-z0-9_-]+)\/?$/;
+  const IG_REEL_ID_IN_HREF = /\/reels?\/([A-Za-z0-9_-]+)/;
   const IG_REEL_LINK = 'a[href*="/reel/"]';
+  const IG_ANY_REEL_LINK = 'a[href*="/reel/"], a[href*="/reels/"]';
+  const IG_NOSCROLL_ATTR = 'data-noshorts-noscroll';
+
+  // Pravidla, která neplatí ve zprávách (náhledy reelů v chatu musí fungovat)
+  // ani na stránce jednoho povoleného reelu.
+  const IG_OUTSIDE_EXCEPTIONS = 'html:not([data-noshorts~="ig-direct"]):not([data-noshorts~="ig-single-reel"])';
 
   const IG_SUGGESTED = labelSet([
     'Navrhované pro vás',
@@ -538,6 +573,112 @@
     'Navrhované reels',
   ]);
 
+  function igSingleReelId(pathname) {
+    const m = IG_SINGLE_REEL_PATH.exec(pathname);
+    return m ? m[1] : null;
+  }
+
+  function igReelIdFromHref(href) {
+    const m = IG_REEL_ID_IN_HREF.exec(href || '');
+    return m ? m[1] : null;
+  }
+
+  function igNextReelBlock(url) {
+    return { reason: 'Další reely', homeUrl: url.origin + '/direct/inbox/', homeLabel: 'Zpět do zpráv' };
+  }
+
+  // --- režim jednoho reelu ---------------------------------------------------
+
+  function igPickAllowedVideo(doc, state) {
+    if (state.allowedVideo && state.allowedVideo.isConnected) return state.allowedVideo;
+    state.allowedVideo = null;
+    state.allowedItem = null;
+    // Viewer otevřený jako dialog (přes konverzaci) má přednost před videi pod ním.
+    const dialogs = [...doc.querySelectorAll('[role="dialog"]')].filter((d) => d.querySelector('video'));
+    const scope = dialogs.length ? dialogs[dialogs.length - 1] : doc;
+    for (const v of scope.querySelectorAll('video')) {
+      if (!v.closest('[' + HIDDEN_ATTR + ']')) {
+        state.allowedVideo = v;
+        break;
+      }
+    }
+    return state.allowedVideo;
+  }
+
+  function igLockScroll(allowed, state) {
+    const doc = allowed.ownerDocument;
+    const win = doc.defaultView;
+    for (let el = allowed.parentElement; el && el !== doc.body && el !== doc.documentElement; el = el.parentElement) {
+      if (el.hasAttribute(IG_NOSCROLL_ATTR)) continue;
+      const oy = win.getComputedStyle(el).overflowY;
+      if (oy !== 'auto' && oy !== 'scroll') continue;
+      el.setAttribute(IG_NOSCROLL_ATTR, el.getAttribute('style') || '');
+      el.style.setProperty('overflow', 'hidden', 'important');
+      el.style.setProperty('touch-action', 'pinch-zoom', 'important');
+      el.style.setProperty('overscroll-behavior', 'none', 'important');
+      state.scrollLocked.push(el);
+      logInfo('zakázán scroll vieweru', el.tagName.toLowerCase());
+    }
+  }
+
+  function igSingleReelScan(doc, state, hide) {
+    state.singleHidden = state.singleHidden || [];
+    state.scrollLocked = state.scrollLocked || [];
+    const hideSingle = (el, reason) => {
+      if (hide(el, reason) !== false) state.singleHidden.push(el);
+    };
+
+    const allowed = igPickAllowedVideo(doc, state);
+    const scope = (allowed && allowed.closest('[role="dialog"]')) || doc.body;
+    if (!scope) return;
+
+    if (allowed) {
+      // 2) Sousední položky = větve s jiným <video>.
+      for (const v of scope.querySelectorAll('video')) {
+        if (v === allowed) continue;
+        const branch = siblingBranch(allowed, v);
+        if (!branch || branch.querySelector('nav, [role="navigation"]')) continue;
+        if (!state.allowedItem) state.allowedItem = siblingBranch(v, allowed);
+        hideSingle(branch, 'další reel ve vieweru');
+        try {
+          v.pause();
+        } catch (e) {
+          /* ignorovat */
+        }
+      }
+      // 3) Zákaz scrollu.
+      igLockScroll(allowed, state);
+    }
+
+    // Odkazy na jiné reely: v aktuální položce = obsah se změnil → blokovat; jinde skrýt.
+    for (const a of scope.querySelectorAll(IG_ANY_REEL_LINK)) {
+      const id = igReelIdFromHref(a.getAttribute('href'));
+      if (!id || id === state.reelId) continue;
+      if (state.allowedItem && state.allowedItem.contains(a)) {
+        logInfo('obsah vieweru se změnil na jiný reel:', id);
+        state.forceBlock = igNextReelBlock(new URL(doc.location.href));
+        return;
+      }
+      hideSingle((allowed && siblingBranch(allowed, a)) || a.closest('article') || a, 'odkaz na jiný reel');
+    }
+  }
+
+  function igRestoreSingle(state) {
+    for (const el of state.singleHidden || []) unhideEl(el);
+    for (const el of state.scrollLocked || []) {
+      const saved = el.getAttribute(IG_NOSCROLL_ATTR);
+      if (saved) el.setAttribute('style', saved);
+      else el.removeAttribute('style');
+      el.removeAttribute(IG_NOSCROLL_ATTR);
+    }
+    state.singleHidden = [];
+    state.scrollLocked = [];
+    state.allowedVideo = null;
+    state.allowedItem = null;
+  }
+
+  // ---------------------------------------------------------------------------
+
   const instagramSite = registerSite({
     id: 'instagram',
 
@@ -549,14 +690,27 @@
       return url.origin + '/';
     },
 
-    blocked(url, cfg) {
-      if (cfg.blockReels && IG_REELS_PATH.test(url.pathname)) return 'Instagram Reels';
+    blocked(url, cfg, state = {}) {
+      if (!cfg.blockReels) return null;
+      const id = cfg.allowSingleReel ? igSingleReelId(url.pathname) : null;
+      if (id) {
+        // 1) Zámek ID: první otevřený reel je povolený, každý další ne.
+        if (!state.reelId) {
+          state.reelId = id;
+          logInfo('povolen jeden reel:', id);
+        }
+        return state.reelId === id ? null : igNextReelBlock(url);
+      }
+      state.reelId = null; // odchod z reelu (např. zpět do zpráv) zámek uvolní
+      if (IG_REELS_PATH.test(url.pathname)) return 'Instagram Reels';
       return null;
     },
 
     pageFlags(url, cfg) {
       const flags = [];
       if (cfg.hideExplore && /^\/explore\/?$/.test(url.pathname)) flags.push('ig-explore');
+      if (/^\/direct(?:\/|$)/.test(url.pathname)) flags.push('ig-direct');
+      if (cfg.blockReels && cfg.allowSingleReel && igSingleReelId(url.pathname)) flags.push('ig-single-reel');
       return flags;
     },
 
@@ -565,9 +719,11 @@
       const add = (reason, ...selectors) => selectors.forEach((css) => rules.push({ css, reason }));
 
       if (cfg.blockReels) {
-        add('Reel ve feedu', `article:has(${IG_REEL_LINK})`);
-        add('odkaz na Reels (navigace/profil)', 'a[href^="/reels/"]', 'a[href$="/reels/"]', 'a:has(svg[aria-label="Reels"])');
-        add('odkaz na Reel', IG_REEL_LINK);
+        const out = cfg.allowSingleReel ? IG_OUTSIDE_EXCEPTIONS + ' ' : '';
+        add('záložka Reels', 'a[href="/reels/"]');
+        add('Reel ve feedu', `${out}article:has(${IG_REEL_LINK})`);
+        add('odkaz na Reels (navigace/profil)', `${out}a[href^="/reels/"]`, `${out}a[href$="/reels/"]`, `${out}a:has(svg[aria-label="Reels"])`);
+        add('odkaz na Reel', `${out}${IG_REEL_LINK}`);
       }
 
       if (cfg.hideExplore) {
@@ -577,7 +733,16 @@
       return rules;
     },
 
-    scan(roots, { cfg, url, hide }) {
+    scan(roots, { cfg, url, hide, state = {} }) {
+      const doc = roots.length ? roots[0].ownerDocument : null;
+      if (!doc) return;
+
+      const single = cfg.blockReels && cfg.allowSingleReel && igSingleReelId(url.pathname);
+      if (single && state.reelId) igSingleReelScan(doc, state, hide);
+      else if ((state.singleHidden && state.singleHidden.length) || (state.scrollLocked && state.scrollLocked.length)) {
+        igRestoreSingle(state);
+      }
+
       if (!cfg.hideSuggested) return;
       for (const root of roots) {
         for (const label of findLabelElements(root, IG_SUGGESTED)) {
@@ -727,6 +892,14 @@
     }
   }
 
+  // blocked() smí vrátit text důvodu, nebo objekt { reason, homeUrl?, homeLabel? }.
+  function normalizeBlock(res, site, url) {
+    if (!res) return null;
+    const homeUrl = site.home ? site.home(url) : null;
+    if (typeof res === 'string') return { reason: res, homeUrl };
+    return { homeUrl, ...res };
+  }
+
   function runSite(win, site, cfg) {
     const doc = win.document;
     const hide = (el, reason) => hideEl(el, site.id + ': ' + reason);
@@ -738,14 +911,19 @@
 
     let url = new URL(win.location.href);
     let mediaTimer = null;
+    // Stav modulu po dobu života stránky (např. zamčené ID reelu). Modul do něj smí zapsat
+    // forceBlock = { reason, homeUrl, homeLabel }, když zjistí blokovaný obsah bez změny URL.
+    const state = { forceBlock: null };
+
+    const pageFlags = () => safe(site.id + '.pageFlags', () => (site.pageFlags ? site.pageFlags(url, cfg, state) : []), []);
 
     const applyUrl = () => {
       url = new URL(win.location.href);
-      const flags = safe(site.id + '.pageFlags', () => (site.pageFlags ? site.pageFlags(url, cfg) : []), []);
-      setPageFlags(doc, flags);
-      const reason = safe(site.id + '.blocked', () => site.blocked(url, cfg), null);
-      if (reason) {
-        showBlock(doc, { reason, homeUrl: site.home ? site.home(url) : null });
+      const res = safe(site.id + '.blocked', () => site.blocked(url, cfg, state), null) || state.forceBlock;
+      setPageFlags(doc, pageFlags());
+      const block = normalizeBlock(res, site, url);
+      if (block) {
+        showBlock(doc, block);
         // Dokud je stránka zablokovaná, pravidelně zastavovat přehrávání (autoplay).
         if (!mediaTimer) mediaTimer = win.setInterval(() => silenceMedia(doc), 700);
       } else {
@@ -757,16 +935,22 @@
       }
     };
 
+    const onUrlChange = () => {
+      state.forceBlock = null;
+      applyUrl();
+    };
+
     const scanRoots = (roots) => {
       ensureCss();
       if (isBlocked(doc)) applyUrl(); // obnoví overlay, kdyby ho stránka odstranila
-      else setPageFlags(doc, safe(site.id + '.pageFlags', () => (site.pageFlags ? site.pageFlags(url, cfg) : []), []));
-      if (site.scan) safe(site.id + '.scan', () => site.scan(roots, { cfg, url, hide }));
+      else setPageFlags(doc, pageFlags());
+      if (site.scan) safe(site.id + '.scan', () => site.scan(roots, { cfg, url, hide, state }));
+      if (state.forceBlock && !isBlocked(doc)) applyUrl();
       if (isDebug()) for (const root of roots) applyRules(root, rules, hide);
     };
 
     applyUrl();
-    const checkUrl = watchUrl(win, applyUrl);
+    const checkUrl = watchUrl(win, onUrlChange);
     watchMutations(win, { onMutation: checkUrl, onBatch: scanRoots });
 
     const initialScan = () => scanRoots([doc.body || doc.documentElement]);

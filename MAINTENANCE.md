@@ -14,6 +14,27 @@ problém najít a nahlásit, abych mohl selektory opravit.
 | Reels na zlomek sekundy probliknou | Safari spustilo skript pozdě (Preload Top Hit, viz README) nebo se na prvek chytá jen JS, ne CSS |
 | Na iPhonu nefunguje nic | rozšíření není povolené pro web, záložka je webová aplikace, nebo skript chybí ve složce |
 
+### Instagram: „jeden reel ze zprávy“
+
+| Příznak | Pravděpodobná příčina |
+|---|---|
+| Po reelu ze zprávy jde swipovat na další | viewer má nový scroll kontejner (bez `overflow-y:auto/scroll`) nebo další položky nemají vlastní `<video>`. Pomůže snapshot vieweru. |
+| Další reel se přehraje a „Zablokováno“ nepřijde | při swipu se nemění URL (`/reel/ID`) a v položce není odkaz s ID. Pošli log navigace (níže) a snapshot před a po swipu. |
+| „Zablokováno“ hned u reelu ze zprávy | IG otevírá reel pod jiným tvarem URL (ne `/reel/ID/` ani `/reels/ID/`), nebo hned při otevření přepíše URL na jiné ID |
+| Náhledy reelů v chatu zmizely | změnila se URL zpráv (není `/direct/…`) |
+
+**Log navigace.** Ukáže, jestli a jak se při swipu mění URL. Vlož ho do konzole
+před otevřením reelu (skript ve Violentmonkey nech na chvíli vypnutý):
+
+```js
+for (const m of ['pushState','replaceState']) { const o = history[m]; history[m] = function (...a) { console.log('[nav]', m, a[2]); return o.apply(this, a); }; }
+addEventListener('popstate', () => console.log('[nav] popstate', location.href));
+```
+
+Pošli mi pak řádky `[nav] …` a snapshoty `fixtures/instagram/direct-thread.html`
+(konverzace), `dm-reel-open.html` (otevřený reel) a `dm-reel-next.html` (po swipu),
+vždy se skutečnou URL z adresního řádku v prvním komentáři.
+
 ## 1. Ověř to na Fedoře
 
 Na iPhonu se do konzole bez Macu nepodíváš, proto se ladí ve Firefoxu
@@ -67,7 +88,7 @@ A k tomu přilož:
 | Web | Soubor | Kde hledat |
 |---|---|---|
 | YouTube | `src/sites/youtube.js` | `YT_SHORTS_PATH` (blokované URL), `rules()` (police, záložka, výsledky, hlavní stránka) |
-| Instagram | `src/sites/instagram.js` | `IG_REELS_PATH`, `rules()` (Reels, Explore), `IG_SUGGESTED` + `scan()` (navrhované) |
+| Instagram | `src/sites/instagram.js` | `IG_REELS_PATH`, `rules()` (Reels, Explore), `IG_SUGGESTED` + `scan()` (navrhované). Jeden reel: `IG_SINGLE_REEL_PATH` + `blocked()` (zámek ID), `igPickAllowedVideo` (které video je „to jedno“), `igSingleReelScan` (skrytí sousedů, odkazy na jiná ID), `igLockScroll`, `IG_OUTSIDE_EXCEPTIONS` (výjimky pro zprávy) |
 | Facebook | `src/sites/facebook.js` | `FB_REELS_PATH`, `FB_WATCH_PATH`, `FB_UNIT_SELECTORS`/`FB_FEED` (jak se pozná příspěvek), `*_LABELS` + `scan()` |
 | TikTok | `src/sites/tiktok.js` | blokuje se vše |
 | Společné | `src/core/` | `text.js` (porovnávání popisků CZ/EN), `dom.js` (hledání příspěvku), `blockScreen.js`, `watch.js` (SPA, MutationObserver) |

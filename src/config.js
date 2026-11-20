@@ -14,7 +14,8 @@ export const CONFIG = {
 
   instagram: {
     enabled: true,
-    blockReels: true, // blokovat /reels/ a /reel/…, skrýt Reels ve feedu, navigaci a profilech
+    blockReels: true, // blokovat záložku /reels/, skrýt Reels ve feedu, navigaci a profilech
+    allowSingleReel: true, // reel ze zprávy/odkazu (/reel/ID) se přehraje, ale jen ten jeden – další jsou zablokované
     hideExplore: true, // skrýt mřížku na /explore/ (vyhledávání zůstane)
     hideSuggested: true, // skrýt navrhované příspěvky a účty ve feedu
   },

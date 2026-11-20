@@ -38,7 +38,11 @@ web, nový snapshot ukáže, co přesně se rozbilo.
 | Web | Doporučené snapshoty |
 |---|---|
 | YouTube | `home.html` (m.youtube.com/), `search.html` (výsledky hledání), `channel.html` (stránka kanálu), `watch.html` (přehrávač) |
-| Instagram | `feed.html` (/), `profile.html` (profil kamaráda), `explore.html` (/explore/) |
+| Instagram | `feed.html` (/), `profile.html` (profil kamaráda), `explore.html` (/explore/), `direct-thread.html` (konverzace s posdíleným reelem), `dm-reel-open.html` (reel otevřený ze zprávy), `dm-reel-next.html` (po swipu na další) |
+
+U snapshotů reelů použij v prvním komentáři **URL, která je zrovna v adresním řádku**
+(po otevření i po swipu se může lišit). Skript přitom ve Violentmonkey vypni, jinak by
+stránku zablokoval. Postup s logováním navigace je v [MAINTENANCE.md](../MAINTENANCE.md).
 | Facebook | `feed.html` (m.facebook.com/), `profile.html`, `video.html` (záložka Video) |
 
 ## Soukromí

@@ -85,6 +85,34 @@ test('build: Instagram /reels/ zablokovaný s tlačítkem domů', () => {
   assert.equal(btn.getAttribute('href'), 'https://www.instagram.com/');
 });
 
+test('build: Instagram – reel ze zprávy, swipe na další → Zablokováno, zpět do zpráv → OK', async () => {
+  const dom = load('https://www.instagram.com/direct/t/123/', '<main><a href="/reel/AAA/">náhled</a></main>');
+  const { document: doc, history } = dom.window;
+  const nav = async (path) => {
+    history.pushState({}, '', path);
+    doc.body.append(doc.createElement('div'));
+    await tick();
+  };
+  assert.ok(!doc.documentElement.hasAttribute('data-noshorts-blocked'));
+
+  await nav('/reel/AAA/');
+  assert.ok(!doc.documentElement.hasAttribute('data-noshorts-blocked'), 'reel ze zprávy se přehraje');
+
+  await nav('/reels/BBB/');
+  assert.ok(doc.documentElement.hasAttribute('data-noshorts-blocked'), 'swipe na další reel je zablokovaný');
+  const btn = doc.querySelector('#noshorts-block a');
+  assert.equal(btn.textContent, 'Zpět do zpráv');
+  assert.equal(btn.getAttribute('href'), 'https://www.instagram.com/direct/inbox/');
+
+  await nav('/direct/t/123/');
+  assert.ok(!doc.documentElement.hasAttribute('data-noshorts-blocked'), 've zprávách vše funguje');
+});
+
+test('build: Instagram – reel z odkazu (nová stránka) se přehraje', () => {
+  const dom = load('https://www.instagram.com/reel/AAA/');
+  assert.ok(!dom.window.document.documentElement.hasAttribute('data-noshorts-blocked'));
+});
+
 test('build: na nepodporovaném webu skript nic nedělá', () => {
   const dom = load('https://example.com/');
   assert.equal(dom.window.document.getElementById('noshorts-style'), null);

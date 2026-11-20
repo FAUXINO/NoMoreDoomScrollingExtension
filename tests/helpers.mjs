@@ -1,5 +1,5 @@
 // Pomocné funkce pro testy: načtení HTML do jsdom a spuštění modulu webu bez prohlížeče.
-import { JSDOM } from 'jsdom';
+import { JSDOM, VirtualConsole } from 'jsdom';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,22 +14,33 @@ export function cfgFor(siteId, overrides = {}) {
 }
 
 // Spustí modul webu nad HTML (jako by běžel v prohlížeči) a vrátí dokument + pomocníky.
-export function runSite(site, html, url, cfgOverrides = {}) {
-  const dom = new JSDOM(html, { url });
+// Pořadí jako v src/main.js: blocked() (může zamknout stav) → pageFlags → pravidla → scan.
+// `state` lze předat z předchozího běhu (simulace SPA navigace).
+export function runSite(site, html, url, cfgOverrides = {}, state = { forceBlock: null }) {
+  // jsdom neumí přehrávat média (video.pause() hlásí „Not implemented“) – tyto hlášky potlačit.
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.forwardTo(console, { omitJSDOMErrors: true });
+  const dom = new JSDOM(html, { url, virtualConsole });
   const doc = dom.window.document;
   const cfg = cfgFor(site.id, cfgOverrides);
   const u = new URL(url);
   const hidden = [];
   const hide = (el, reason) => {
-    if (hideEl(el, site.id + ': ' + reason)) hidden.push({ el, reason });
+    const ok = hideEl(el, site.id + ': ' + reason);
+    if (ok) hidden.push({ el, reason });
+    return ok;
   };
-  setPageFlags(doc, site.pageFlags ? site.pageFlags(u, cfg) : []);
+  const blocked = site.blocked(u, cfg, state);
+  setPageFlags(doc, site.pageFlags ? site.pageFlags(u, cfg, state) : []);
   applyRules(doc.body, site.rules(cfg), hide);
-  if (site.scan) site.scan([doc.body], { cfg, url: u, hide });
+  if (site.scan) site.scan([doc.body], { cfg, url: u, hide, state });
   return {
+    dom,
     doc,
     hidden,
-    blocked: site.blocked(u, cfg),
+    state,
+    blocked,
+    rescan: () => site.scan([doc.body], { cfg, url: u, hide, state }),
     visible: (sel) => [...doc.querySelectorAll(sel)].filter((el) => !isHiddenByScript(el)),
     isVisible: (sel) => {
       const el = doc.querySelector(sel);

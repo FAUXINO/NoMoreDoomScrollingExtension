@@ -7,12 +7,27 @@ které sleduješ, zprávy, profily i běžná videa na YouTube.
 | Web | Co skript dělá |
 |---|---|
 | **YouTube** | Blokuje `/shorts/…`. Skrývá Shorts police, záložku Shorts, Shorts ve výsledcích hledání a na kanálech. Hlavní stránka je bez doporučených videí. |
-| **Instagram** | Blokuje `/reels/` a `/reel/…`. Skrývá Reels ve feedu, v navigaci a na profilech, mřížku na Explore (vyhledávání zůstává) a navrhované příspěvky a účty. |
+| **Instagram** | Blokuje záložku Reels (`/reels/`). Skrývá Reels ve feedu, v navigaci a na profilech, mřížku na Explore (vyhledávání zůstává) a navrhované příspěvky a účty. **Jeden reel ze zprávy nebo z odkazu** se přehraje, ale dál swipovat nejde (viz níže). |
 | **Facebook** | Blokuje `/reel/…` a záložku Video (`/watch`). Skrývá Reels ve feedu a v navigaci, příspěvky „Navrhované pro vás“ a Příběhy. Jednotlivá videa od přátel zůstávají. |
 | **TikTok** | Blokuje celý web. |
 
 Na zablokované stránce se místo obsahu zobrazí obrazovka **„Zablokováno“** s tlačítkem
 zpět na hlavní stránku. Skript nedělá žádné síťové požadavky a nemá žádnou telemetrii.
+
+### Jeden reel ze zprávy (Instagram)
+
+Když ti někdo pošle reel do zpráv, nebo otevřeš odkaz na reel (`instagram.com/reel/…`),
+reel se normálně přehraje. Pak ale:
+
+- ve vieweru je vidět jen tenhle jeden reel a další položky jsou skryté,
+- swipovat ani scrollovat na další nejde,
+- když se přesto načte jiný reel (jiná adresa nebo jiný obsah), zobrazí se „Zablokováno“
+  s tlačítkem **Zpět do zpráv**.
+
+Náhledy reelů v konverzacích zůstávají vidět. Po návratu do zpráv jde otevřít další
+poslaný reel. Vypnout se to dá volbou `allowSingleReel: false` v `CONFIG`; pak se
+blokuje každý reel. Na Facebooku a YouTube tato výjimka neplatí, reely a Shorts
+z odkazů tam zůstávají blokované.
 
 ---
 
@@ -137,7 +152,8 @@ tests/               testy (jsdom); fixtures/ = snapshoty skutečných stránek
    ať web pošle mobilní verzi.
 5. Projdi stránky:
    - YouTube: hlavní stránka, hledání, kanál, `/shorts/ID`, běžné video
-   - Instagram: feed, profil, `/explore/`, `/reels/`, `/reel/ID`, zprávy
+   - Instagram: feed, profil, `/explore/`, `/reels/`, zprávy; reel ze zprávy: přehraje se,
+     swipe na další nejde, a když se další načte, zobrazí se „Zablokováno“ s tlačítkem do zpráv
    - Facebook: feed, `/reel/ID`, `/watch/`, video od kamaráda
    - TikTok
 
