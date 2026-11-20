@@ -1,0 +1,71 @@
+Chci postavit userscript, který na iPhonu v Safari odstraní krátká videa ze
+sociálních sítí. Poběží v aplikaci "Userscripts" (open source, github.com/quoid/userscripts)
+jako rozšíření Safari na iOS. Na plochu si dám záložky na weby, které se
+otevírají v Safari (ne jako webová aplikace, tam rozšíření nefungují).
+Vyvíjím na Fedoře (KDE Plasma), Mac nemám.
+
+## Cíl
+Jeden výsledný soubor `no-shorts.user.js`, který funguje na:
+- Instagram (instagram.com): pryč s Reels (záložka, feed, profily, /reels/ URL)
+- Facebook (facebook.com, m.facebook.com): pryč s Reels a krátkými videi
+  (feed, karusely, záložka, /reel/ URL)
+- YouTube (youtube.com, m.youtube.com): pryč se Shorts (police na hlavní
+  stránce, záložka, výsledky hledání, kanály, /shorts/ URL)
+- TikTok (tiktok.com): viz otázky níže
+Všechno ostatní (feed od lidí, které sleduju, DMs, profily, běžná videa na YouTube)
+musí fungovat dál.
+
+## Než začneš psát kód
+Nejdřív si nastuduj README a dokumentaci quoid/userscripts (podporované
+metadata klíče, @run-at, @inject-into, umístění skriptů na iOS, aktualizace)
+a ověř si, co na iOS funguje. Pak se mě zeptej (nástrojem pro otázky,
+s možnostmi a svým doporučením u každé) minimálně na tohle:
+1. TikTok je celý krátká videa. Mám ho zablokovat úplně, nechat jen
+   zprávy/profily, nebo něco jiného?
+2. Instagram: skrýt jen Reels, nebo i všechna videa ve feedu? A Explore,
+   navrhované příspěvky, Stories?
+3. YouTube: /shorts/ID přesměrovat na normální přehrávač (/watch?v=ID),
+   nebo úplně zablokovat? Skrýt i doporučená videa na hlavní stránce?
+4. Co se má stát, když otevřu zablokovanou stránku: přesměrování na hlavní
+   stránku, nebo vlastní obrazovka "Zablokováno"?
+5. Nastavení: přepínače v konfiguračním objektu na začátku skriptu, nebo
+   malý panel v rámci stránky (uložení do localStorage)?
+6. Struktura: moduly v src/ (jeden na web) + jednoduchý build skript, který
+   je spojí do jednoho .user.js, nebo rovnou jeden soubor?
+7. Jak dostanu skript do iPhonu a jak ho budu aktualizovat (iCloud Drive
+   přes icloud.com, GitHub raw URL s @updateURL, něco jiného)?
+Kdykoli během práce narazíš na rozhodnutí s víc rozumnými variantami nebo
+si nebudeš jistý, zastav se a zeptej se mě stejným způsobem. Nehádej.
+
+## Technické požadavky
+- @run-at document-start + CSS vložené co nejdřív, ať Reels/Shorts ani
+  neprobliknou.
+- Všechny weby jsou SPA: zachytávej změny URL (pushState/replaceState,
+  popstate) a nový obsah přes MutationObserver (throttlovaný, ať to nežere
+  baterii).
+- Selektory musí být co nejstabilnější: href vzory (/reels/, /reel/, /shorts/),
+  aria-label, role, struktura. Ne generované CSS třídy od Mety. Pokud
+  musíš použít text, podporuj češtinu i angličtinu (UI mám česky).
+- Píšu pro mobilní verze webů (layout iPhonu), ne desktop.
+- Každý web jako samostatný modul s try/catch, aby rozbitý Facebook
+  neshodil YouTube.
+- Debug režim (přepínač), který loguje, co skript skryl a proč.
+- Žádné externí požadavky, žádná telemetrie.
+
+## Testování na Fedoře
+Navrhni postup, jak to otestovat bez iPhonu: např. Firefox + Violentmonkey
++ responzivní režim v DevTools s iPhone user-agentem. Zvaž i automatizované
+testy selektorů nad HTML snapshoty, které ti uložím do fixtures/ (řekni mi
+přesně, jak je mám uložit).
+
+## Výstup
+- Git repo s průběžnými commity
+- `no-shorts.user.js` (výsledný soubor)
+- README.md česky: instalace Userscripts na iPhonu, povolení rozšíření
+  pro všechny weby, nastavení složky se skripty, přidání záložek na plochu
+  s VYPNUTÝM "Otevřít jako webovou aplikaci", a jak skript aktualizovat
+- MAINTENANCE.md: co dělat, když Meta/YouTube/TikTok změní web (jak mi
+  říct, co mám poslat, abys selektory opravil)
+
+Začni tím, že prostuduješ dokumentaci a položíš mi otázky. Kód piš až po
+mých odpovědích.
