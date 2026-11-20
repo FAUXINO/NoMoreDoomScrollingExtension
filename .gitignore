@@ -1,0 +1,9 @@
+# Citlivé a lokální soubory – nesmí se dostat do auto-commitu
+.env
+.env.*
+.claude/settings.local.json
+
+# Závislosti a buildy
+node_modules/
+dist/
+*.zip
