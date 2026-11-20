@@ -72,6 +72,19 @@ test('build: SPA navigace (pushState) na Short a zpět', async () => {
   assert.ok(!doc.getElementById('noshorts-block'));
 });
 
+test('build: TikTok je zablokovaný celý a bez tlačítka domů', () => {
+  const dom = load('https://www.tiktok.com/foryou');
+  const box = dom.window.document.getElementById('noshorts-block');
+  assert.ok(box);
+  assert.equal(box.querySelector('a'), null);
+});
+
+test('build: Instagram /reels/ zablokovaný s tlačítkem domů', () => {
+  const dom = load('https://www.instagram.com/reels/');
+  const btn = dom.window.document.querySelector('#noshorts-block a');
+  assert.equal(btn.getAttribute('href'), 'https://www.instagram.com/');
+});
+
 test('build: na nepodporovaném webu skript nic nedělá', () => {
   const dom = load('https://example.com/');
   assert.equal(dom.window.document.getElementById('noshorts-style'), null);

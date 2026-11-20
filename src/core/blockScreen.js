@@ -39,7 +39,7 @@ export function showBlock(doc, { reason, homeUrl }) {
     title.textContent = 'Zablokováno';
     const text = doc.createElement('p');
     text.className = 'ns-text';
-    text.textContent = reason + ' jsou vypnuté skriptem No Shorts.';
+    text.textContent = reason + ' – tuhle stránku blokuje skript No Shorts.';
     box.append(title, text);
     if (homeUrl) {
       const btn = doc.createElement('a');

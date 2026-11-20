@@ -283,7 +283,7 @@
       title.textContent = 'Zablokováno';
       const text = doc.createElement('p');
       text.className = 'ns-text';
-      text.textContent = reason + ' jsou vypnuté skriptem No Shorts.';
+      text.textContent = reason + ' – tuhle stránku blokuje skript No Shorts.';
       box.append(title, text);
       if (homeUrl) {
         const btn = doc.createElement('a');
@@ -593,6 +593,35 @@
         }
       }
     },
+  });
+
+  // ---- src/sites/tiktok.js ----
+  // TikTok – celý web je krátká videa, proto se blokuje úplně (bez tlačítka „domů“).
+
+  const tiktokSite = registerSite({
+    id: 'tiktok',
+
+    matches(host) {
+      return host === 'tiktok.com' || host.endsWith('.tiktok.com');
+    },
+
+    home() {
+      return null;
+    },
+
+    blocked() {
+      return 'TikTok';
+    },
+
+    pageFlags() {
+      return [];
+    },
+
+    rules() {
+      return [];
+    },
+
+    scan() {},
   });
 
   // ---- src/sites/youtube.js ----
