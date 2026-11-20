@@ -16,16 +16,22 @@ problém najít a nahlásit, abych mohl selektory opravit.
 
 ### Instagram: „jeden reel ze zprávy“
 
-> **Zjištěno 2026-11-20 (mobilní web, Firefox s iPhone UA):** reel ze zprávy se otevírá
+> **Zjištěno 2026-11-20/21 (mobilní web, Firefox s iPhone UA):** reel ze zprávy se otevírá
 > jako **overlay uvnitř `/direct/t/ID/`**. URL se nemění při otevření ani při swipu
 > (žádný pushState/replaceState) a viewer má předem načtených **9 `<video>`**.
-> Režim jednoho reelu proto nesmí stát jen na URL `/reel/ID`; viewer je potřeba poznat
-> podle obsahu stránky. (Úprava čeká na snapshoty pořízené přes `scripts/snapshot-console.js`.)
+> Každá položka vieweru má atribut **`data-reel-type`**: `reshared` je reel poslaný ve zprávě,
+> `suggested` je 8 dalších reelů. Odkazy v položkách vedou na `/<uživatel>/reels/`
+> a `/reels/audio/<číslo>/` (ne na ID reelu). DOM se při swipu nemění, posune se jen scroll.
+>
+> Skript proto ve zprávách skryje každou položku `data-reel-type` kromě `reshared`, zakáže
+> scroll kolem poslaného videa, a když se spustí jiné video (událost `play`), zobrazí
+> „Zablokováno“.
 
 | Příznak | Pravděpodobná příčina |
 |---|---|
-| Po reelu ze zprávy jde swipovat na další | viewer má nový scroll kontejner (bez `overflow-y:auto/scroll`) nebo další položky nemají vlastní `<video>`. Pomůže snapshot vieweru. |
-| Další reel se přehraje a „Zablokováno“ nepřijde | při swipu se nemění URL (`/reel/ID`) a v položce není odkaz s ID. Pošli log navigace (níže) a snapshot před a po swipu. |
+| Po reelu ze zprávy jsou vidět další reely / jde swipovat | Instagram přejmenoval atribut `data-reel-type` nebo jeho hodnoty (`reshared`, `suggested`). V Inspektoru vyhledej `data-reel-type`; pošli snapshot vieweru. |
+| Další reel se přehraje a „Zablokováno“ nepřijde | další položka hraje uvnitř `data-reel-type="reshared"` (změnila se struktura), nebo viewer už nemá žádný `data-reel-type`. Pošli snapshot před a po swipu. |
+| „Zablokováno“ hned po otevření reelu ze zprávy | Instagram při otevření spouští i předem načtené video. Pošli snapshot hned po otevření. |
 | „Zablokováno“ hned u reelu ze zprávy | IG otevírá reel pod jiným tvarem URL (ne `/reel/ID/` ani `/reels/ID/`), nebo hned při otevření přepíše URL na jiné ID |
 | Náhledy reelů v chatu zmizely | změnila se URL zpráv (není `/direct/…`) |
 
@@ -94,7 +100,7 @@ A k tomu přilož:
 | Web | Soubor | Kde hledat |
 |---|---|---|
 | YouTube | `src/sites/youtube.js` | `YT_SHORTS_PATH` (blokované URL), `rules()` (police, záložka, výsledky, hlavní stránka) |
-| Instagram | `src/sites/instagram.js` | `IG_REELS_PATH`, `rules()` (Reels, Explore), `IG_SUGGESTED` + `scan()` (navrhované). Jeden reel: `IG_SINGLE_REEL_PATH` + `blocked()` (zámek ID), `igPickAllowedVideo` (které video je „to jedno“), `igSingleReelScan` (skrytí sousedů, odkazy na jiná ID), `igLockScroll`, `IG_OUTSIDE_EXCEPTIONS` (výjimky pro zprávy) |
+| Instagram | `src/sites/instagram.js` | `IG_REELS_PATH`, `rules()` (Reels, Explore), `IG_SUGGESTED` + `scan()` (navrhované). Jeden reel: `IG_SINGLE_REEL_PATH` + `blocked()` (zámek ID), `igPickAllowedVideo` (které video je „to jedno“), `igSingleReelScan` (skrytí sousedů, odkazy na jiná ID), `igLockScroll`, `IG_OUTSIDE_EXCEPTIONS` (výjimky pro zprávy). Reel ze zprávy (overlay v `/direct/`): `IG_REEL_ITEM`/`IG_SHARED_ITEM` (`data-reel-type`), `igDirectViewerScan`, `igInstallPlayGuard` |
 | Facebook | `src/sites/facebook.js` | `FB_REELS_PATH`, `FB_WATCH_PATH`, `FB_UNIT_SELECTORS`/`FB_FEED` (jak se pozná příspěvek), `*_LABELS` + `scan()` |
 | TikTok | `src/sites/tiktok.js` | blokuje se vše |
 | Společné | `src/core/` | `text.js` (porovnávání popisků CZ/EN), `dom.js` (hledání příspěvku), `blockScreen.js`, `watch.js` (SPA, MutationObserver) |

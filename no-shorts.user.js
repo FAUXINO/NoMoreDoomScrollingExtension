@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         No Shorts
 // @namespace    https://github.com/FAUXINO/NoMoreDoomScrollingExtension
-// @version      0.2.0
+// @version      0.3.0
 // @description  Skryje Reels, Shorts a krátká videa na Instagramu, Facebooku, YouTube a TikToku (mobilní Safari).
 // @author       FAUXINO
 // @match        *://www.youtube.com/*
@@ -101,6 +101,7 @@
   //   scan(roots, ctx)            dynamické skrývání; ctx = { cfg, url, hide, state }
   // `state` je objekt modulu po dobu života stránky (např. zamčené ID reelu). Nastavením
   // state.forceBlock = { reason, … } může scan zablokovat stránku i bez změny URL.
+  // Mimo scan (např. v posluchači události) pak zavolá state.requestApply().
   const SITES = [];
 
   function registerSite(site) {
@@ -546,12 +547,26 @@
   //  2. sousední položky ve vieweru (jiné <video>, odkazy na jiná ID) se skryjí,
   //  3. scroll kontejnery kolem přehrávaného videa dostanou overflow:hidden (nejde swipovat).
   // Pokud se obsah aktuální položky změní na jiný reel bez změny URL → také „Zablokováno“.
+  //
+  // Reel ze zprávy (mobilní web, ověřeno snapshotem 2026-11): otevře se jako overlay přímo
+  // v /direct/t/ID/, URL se nemění ani při swipu. Viewer má položky s atributem
+  // data-reel-type: "reshared" = reel poslaný ve zprávě, "suggested" = předem načtené
+  // další reely (u nás 8). Ve zprávách proto:
+  //  - CSS skryje každou položku data-reel-type kromě "reshared" (sousedé, swipe nemá kam),
+  //  - scroll kontejnery kolem povoleného videa dostanou overflow:hidden,
+  //  - když se přesto spustí jiné video než to poslané → „Zablokováno“ (pojistka přes
+  //    událost play, kdyby Instagram atribut přejmenoval).
 
   // /reels/, /reels/ID/, /reel/ID/, /uzivatel/reels/
   const IG_REELS_PATH = /^\/(?:[^/]+\/)?reels?(?:\/|$)/i;
   // Jeden konkrétní reel: /reel/ID/ nebo /reels/ID/
   const IG_SINGLE_REEL_PATH = /^\/reels?\/([A-Za-z0-9_-]+)\/?$/;
-  const IG_REEL_ID_IN_HREF = /\/reels?\/([A-Za-z0-9_-]+)/;
+  // ID reelu v odkazu. /reels/audio/123/ (reely se stejnou hudbou) ID reelu není.
+  const IG_REEL_ID_IN_HREF = /\/reels?\/(?!audio\/)([A-Za-z0-9_-]+)/;
+  const IG_DIRECT_PATH = /^\/direct(?:\/|$)/;
+  // Položky vieweru reelů: data-reel-type="reshared" (poslaný ve zprávě) / "suggested" (další).
+  const IG_REEL_ITEM = '[data-reel-type]';
+  const IG_SHARED_ITEM = '[data-reel-type="reshared"]';
   const IG_REEL_LINK = 'a[href*="/reel/"]';
   const IG_ANY_REEL_LINK = 'a[href*="/reel/"], a[href*="/reels/"]';
   const IG_NOSCROLL_ATTR = 'data-noshorts-noscroll';
@@ -584,7 +599,9 @@
   }
 
   function igNextReelBlock(url) {
-    return { reason: 'Další reely', homeUrl: url.origin + '/direct/inbox/', homeLabel: 'Zpět do zpráv' };
+    // Ve vieweru nad konverzací vede tlačítko zpět do té konverzace (načte se znovu bez vieweru).
+    const thread = /^\/direct\/t\/[^/]+\/?$/.test(url.pathname) ? url.pathname : '/direct/inbox/';
+    return { reason: 'Další reely', homeUrl: url.origin + thread, homeLabel: 'Zpět do zpráv' };
   }
 
   // --- režim jednoho reelu ---------------------------------------------------
@@ -663,6 +680,54 @@
     }
   }
 
+  // --- reel ze zprávy (overlay v /direct/) -------------------------------------
+
+  // Pojistka: spuštění jiného videa než poslaného reelu, když je viewer otevřený → blokace.
+  function igInstallPlayGuard(doc, cfg, state) {
+    if (state.playGuard === doc) return;
+    state.playGuard = doc;
+    doc.addEventListener(
+      'play',
+      (e) => {
+        const v = e.target;
+        if (!v || v.tagName !== 'VIDEO') return;
+        const url = new URL(doc.location.href);
+        if (!IG_DIRECT_PATH.test(url.pathname)) return;
+        if (!doc.querySelector(IG_REEL_ITEM)) return; // viewer zavřený – videa v chatu jsou OK
+        if (cfg.allowSingleReel && v.closest(IG_SHARED_ITEM)) return;
+        try {
+          v.pause();
+        } catch (err) {
+          /* ignorovat */
+        }
+        logInfo('ve vieweru se spustil další reel');
+        state.forceBlock = igNextReelBlock(url);
+        if (state.requestApply) state.requestApply();
+      },
+      true,
+    );
+  }
+
+  // Vrací true, když je viewer otevřený (stav se nemá obnovovat).
+  function igDirectViewerScan(doc, cfg, state) {
+    igInstallPlayGuard(doc, cfg, state);
+    if (!doc.querySelector(IG_REEL_ITEM)) return false;
+    state.scrollLocked = state.scrollLocked || [];
+    const shared = cfg.allowSingleReel ? doc.querySelector(IG_SHARED_ITEM) : null;
+    // Sousedy skrývá CSS; tady jen zastavit jejich videa (kdyby se načítala/hrála na pozadí).
+    for (const v of doc.querySelectorAll(IG_REEL_ITEM + ' video')) {
+      if (shared && shared.contains(v)) continue;
+      try {
+        if (!v.paused) v.pause();
+      } catch (e) {
+        /* ignorovat */
+      }
+    }
+    const allowed = shared && shared.querySelector('video');
+    if (allowed) igLockScroll(allowed, state);
+    return true;
+  }
+
   function igRestoreSingle(state) {
     for (const el of state.singleHidden || []) unhideEl(el);
     for (const el of state.scrollLocked || []) {
@@ -709,7 +774,7 @@
     pageFlags(url, cfg) {
       const flags = [];
       if (cfg.hideExplore && /^\/explore\/?$/.test(url.pathname)) flags.push('ig-explore');
-      if (/^\/direct(?:\/|$)/.test(url.pathname)) flags.push('ig-direct');
+      if (IG_DIRECT_PATH.test(url.pathname)) flags.push('ig-direct');
       if (cfg.blockReels && cfg.allowSingleReel && igSingleReelId(url.pathname)) flags.push('ig-single-reel');
       return flags;
     },
@@ -724,6 +789,12 @@
         add('Reel ve feedu', `${out}article:has(${IG_REEL_LINK})`);
         add('odkaz na Reels (navigace/profil)', `${out}a[href^="/reels/"]`, `${out}a[href$="/reels/"]`, `${out}a:has(svg[aria-label="Reels"])`);
         add('odkaz na Reel', `${out}${IG_REEL_LINK}`);
+        // Viewer reelů: předem načtené další reely kdekoli; ve zprávách vše kromě poslaného.
+        add('další reel ve vieweru', '[data-reel-type="suggested"]');
+        add(
+          'další reel ve vieweru (zprávy)',
+          `${flagSel('ig-direct')} ${IG_REEL_ITEM}${cfg.allowSingleReel ? `:not(${IG_SHARED_ITEM})` : ''}`,
+        );
       }
 
       if (cfg.hideExplore) {
@@ -738,8 +809,14 @@
       if (!doc) return;
 
       const single = cfg.blockReels && cfg.allowSingleReel && igSingleReelId(url.pathname);
-      if (single && state.reelId) igSingleReelScan(doc, state, hide);
-      else if ((state.singleHidden && state.singleHidden.length) || (state.scrollLocked && state.scrollLocked.length)) {
+      let active = false;
+      if (single && state.reelId) {
+        igSingleReelScan(doc, state, hide);
+        active = true;
+      } else if (cfg.blockReels && IG_DIRECT_PATH.test(url.pathname)) {
+        active = igDirectViewerScan(doc, cfg, state);
+      }
+      if (!active && ((state.singleHidden && state.singleHidden.length) || (state.scrollLocked && state.scrollLocked.length))) {
         igRestoreSingle(state);
       }
 
@@ -933,6 +1010,11 @@
           mediaTimer = null;
         }
       }
+    };
+
+    // Modul si může vyžádat okamžité vyhodnocení forceBlock mimo dávku mutací (např. z události play).
+    state.requestApply = () => {
+      if (state.forceBlock && !isBlocked(doc)) safe(site.id + '.requestApply', applyUrl);
     };
 
     const onUrlChange = () => {

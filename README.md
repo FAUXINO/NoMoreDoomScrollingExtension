@@ -19,10 +19,14 @@ zpět na hlavní stránku. Skript nedělá žádné síťové požadavky a nemá
 Když ti někdo pošle reel do zpráv, nebo otevřeš odkaz na reel (`instagram.com/reel/…`),
 reel se normálně přehraje. Pak ale:
 
-- ve vieweru je vidět jen tenhle jeden reel a další položky jsou skryté,
+- ve vieweru je vidět jen tenhle jeden reel; další reely, které si Instagram předem načte, jsou skryté,
 - swipovat ani scrollovat na další nejde,
-- když se přesto načte jiný reel (jiná adresa nebo jiný obsah), zobrazí se „Zablokováno“
-  s tlačítkem **Zpět do zpráv**.
+- když se přesto načte nebo spustí jiný reel (jiná adresa nebo jiné video), zobrazí se
+  „Zablokováno“ s tlačítkem **Zpět do zpráv**. Ve vieweru nad konverzací tlačítko vrátí
+  přímo do té konverzace.
+
+Reel ze zprávy se na mobilním webu otevírá přes konverzaci a adresa se při tom nemění.
+Skript ho proto pozná podle obsahu stránky, ne podle URL.
 
 Náhledy reelů v konverzacích zůstávají vidět. Po návratu do zpráv jde otevřít další
 poslaný reel. Vypnout se to dá volbou `allowSingleReel: false` v `CONFIG`; pak se

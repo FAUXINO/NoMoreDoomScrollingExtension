@@ -121,3 +121,96 @@ test('odchod z reelu (SPA zpět do zpráv) vrátí skryté prvky a scroll', () =
   assert.ok(r.isVisible('#item3'));
   assert.equal(r.doc.getElementById('viewer').getAttribute('style'), 'overflow-y: auto');
 });
+
+// --- reel ze zprávy jako overlay v /direct/t/ID/ (URL se nemění) ---------------
+// Struktura podle snapshotu mobilního webu (2026-11), zjednodušená a anonymizovaná.
+const DM_VIEWER_HTML = `<body><section>
+<div id="thread"><div id="msgvid"><video id="cv"></video></div><div id="msgtxt"><span>Ahoj</span></div></div>
+<div id="vscroll" style="overflow-y: auto">
+  <div id="w0"><div id="shared" data-reel-type="reshared" data-fbid="1">
+    <div><video id="v0"></video></div>
+    <a id="prof" href="/kamarad/reels/">kamarad reels</a>
+    <a id="audio" href="/reels/audio/111/">původní zvuk</a>
+  </div></div>
+  <div id="list">
+    <div id="s1" data-reel-type="suggested" data-fbid="2"><video id="v1"></video><a href="/reels/audio/222/">zvuk</a></div>
+    <div id="s2" data-reel-type="suggested" data-fbid="3"><video id="v2"></video></div>
+    <div id="loading"><svg aria-label="Loading..."></svg></div>
+  </div>
+</div>
+</section></body>`;
+const DM_URL = 'https://www.instagram.com/direct/t/123/';
+
+function play(r, id) {
+  r.doc.getElementById(id).dispatchEvent(new r.dom.window.Event('play'));
+}
+
+test('DM viewer: poslaný reel vidět, předem načtené další reely skryté, scroll zakázaný', () => {
+  const r = runSite(instagramSite, DM_VIEWER_HTML, DM_URL);
+  assert.equal(r.blocked, null);
+  for (const id of ['#shared', '#v0', '#audio', '#thread', '#msgvid']) assert.ok(r.isVisible(id), id);
+  assert.ok(!r.isVisible('#s1'));
+  assert.ok(!r.isVisible('#s2'));
+  assert.equal(r.doc.getElementById('vscroll').style.getPropertyValue('overflow'), 'hidden');
+  assert.equal(r.state.forceBlock, null, 'odkaz /reels/audio/… není jiný reel');
+});
+
+test('DM viewer: spuštění dalšího reelu → Zablokováno s tlačítkem zpět do konverzace', () => {
+  const r = runSite(instagramSite, DM_VIEWER_HTML, DM_URL);
+  let applied = 0;
+  r.state.requestApply = () => applied++;
+  play(r, 'v0');
+  assert.equal(r.state.forceBlock, null, 'poslaný reel hrát smí');
+  play(r, 'v1');
+  assert.deepEqual(r.state.forceBlock, {
+    reason: 'Další reely',
+    homeUrl: DM_URL,
+    homeLabel: 'Zpět do zpráv',
+  });
+  assert.equal(applied, 1);
+});
+
+test('DM viewer: video jiné než poslané (bez data-reel-type) → také Zablokováno', () => {
+  const html = DM_VIEWER_HTML.replace('<div id="s2" data-reel-type="suggested" data-fbid="3">', '<div id="s2">');
+  const r = runSite(instagramSite, html, DM_URL);
+  play(r, 'v2');
+  assert.equal(r.state.forceBlock.reason, 'Další reely');
+});
+
+test('DM bez otevřeného vieweru: videa v chatu se přehrávají normálně', () => {
+  const r = runSite(instagramSite, DM_HTML.replace('<div id="msg3">', '<div id="msg4"><video id="cv"></video></div><div id="msg3">'), DM_URL);
+  play(r, 'cv');
+  assert.equal(r.state.forceBlock, null);
+  assert.ok(r.isVisible('#msg4'));
+});
+
+test('DM viewer zavřený → scroll se vrátí', () => {
+  const r = runSite(instagramSite, DM_VIEWER_HTML, DM_URL);
+  const vs = r.doc.getElementById('vscroll');
+  assert.equal(vs.style.getPropertyValue('overflow'), 'hidden');
+  for (const el of r.doc.querySelectorAll('#w0, #list')) el.remove();
+  r.rescan();
+  assert.equal(vs.getAttribute('style'), 'overflow-y: auto');
+  assert.equal(r.state.scrollLocked.length, 0);
+});
+
+test('DM viewer s allowSingleReel=false: skrytý i poslaný reel a jeho přehrání blokuje', () => {
+  const r = runSite(instagramSite, DM_VIEWER_HTML, DM_URL, { allowSingleReel: false });
+  assert.ok(!r.isVisible('#shared'));
+  assert.ok(r.isVisible('#thread'));
+  play(r, 'v0');
+  assert.equal(r.state.forceBlock.reason, 'Další reely');
+});
+
+test('předem načtené další reely (data-reel-type="suggested") jsou skryté i mimo zprávy', () => {
+  const r = runSite(instagramSite, DM_VIEWER_HTML, 'https://www.instagram.com/reel/AAA/');
+  assert.ok(!r.isVisible('#s1'));
+});
+
+test('stránka reelu: odkaz /reels/audio/… v položce není „jiný reel“', () => {
+  const html = `<body><main><div id="viewer"><div id="item1"><video></video>
+    <a href="/reel/AAA/">AAA</a><a href="/reels/audio/111/">zvuk</a></div></div></main></body>`;
+  const r = runSite(instagramSite, html, 'https://www.instagram.com/reel/AAA/');
+  assert.equal(r.state.forceBlock, null);
+  assert.ok(r.isVisible('#item1'));
+});

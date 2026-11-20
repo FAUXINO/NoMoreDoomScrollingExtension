@@ -23,6 +23,8 @@ web, nový snapshot ukáže, co přesně se rozbilo.
      `povolit vkládání`) a skript vložil znovu.
    - Zadej název souboru (např. `dm-reel-open.html`). Soubor se uloží do Stažených.
      URL stránky skript zapíše na první řádek sám.
+   - Pokud se soubor uloží pod jiným jménem (např. `downloaded-file-123`), hned ho
+     přejmenuj na `<stránka>.html`.
 6. Přesuň soubor do projektu:
 
    ```bash

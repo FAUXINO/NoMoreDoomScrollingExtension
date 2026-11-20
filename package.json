@@ -1,6 +1,6 @@
 {
   "name": "no-shorts-userscript",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Userscript pro Safari na iOS (Userscripts), který skryje Reels, Shorts a krátká videa.",
   "type": "module",

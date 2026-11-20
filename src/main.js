@@ -62,6 +62,11 @@ function runSite(win, site, cfg) {
     }
   };
 
+  // Modul si může vyžádat okamžité vyhodnocení forceBlock mimo dávku mutací (např. z události play).
+  state.requestApply = () => {
+    if (state.forceBlock && !isBlocked(doc)) safe(site.id + '.requestApply', applyUrl);
+  };
+
   const onUrlChange = () => {
     state.forceBlock = null;
     applyUrl();

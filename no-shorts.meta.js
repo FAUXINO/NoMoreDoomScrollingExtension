@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         No Shorts
 // @namespace    https://github.com/FAUXINO/NoMoreDoomScrollingExtension
-// @version      0.2.0
+// @version      0.3.0
 // @description  Skryje Reels, Shorts a krátká videa na Instagramu, Facebooku, YouTube a TikToku (mobilní Safari).
 // @author       FAUXINO
 // @match        *://www.youtube.com/*

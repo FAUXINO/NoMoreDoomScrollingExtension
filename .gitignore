@@ -9,4 +9,4 @@ dist/
 *.zip
 
 # Snapshoty stránek obsahují osobní data – necommitovat (viz fixtures/README.md)
-fixtures/*/*.html
+fixtures/*/

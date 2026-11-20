@@ -10,6 +10,7 @@
 //   scan(roots, ctx)            dynamické skrývání; ctx = { cfg, url, hide, state }
 // `state` je objekt modulu po dobu života stránky (např. zamčené ID reelu). Nastavením
 // state.forceBlock = { reason, … } může scan zablokovat stránku i bez změny URL.
+// Mimo scan (např. v posluchači události) pak zavolá state.requestApply().
 export const SITES = [];
 
 export function registerSite(site) {

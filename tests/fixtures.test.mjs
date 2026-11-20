@@ -21,8 +21,11 @@ const SITES = [
     site: instagramSite,
     dir: 'instagram',
     leftovers: (r, url) => {
-      // Ve zprávách jsou náhledy reelů povolené.
-      if (url.pathname.startsWith('/direct/')) return [];
+      // Ve zprávách jsou náhledy reelů povolené. Když je otevřený viewer reelu ze zprávy,
+      // smí být vidět jen video poslaného reelu (ne předem načtené další reely).
+      if (url.pathname.startsWith('/direct/')) {
+        return r.visible('video').filter((v) => !v.closest('[data-reel-type="reshared"]'));
+      }
       const links = r.visible('a[href*="/reel/"], a[href^="/reels/"]');
       // Na stránce jednoho reelu smí zůstat jen odkazy na ten jeden reel.
       if (r.state.reelId) return links.filter((a) => reelId(a.getAttribute('href')) !== r.state.reelId);
@@ -40,7 +43,7 @@ for (const { site, dir, leftovers } of SITES) {
       assert.ok(fx.url, `${fx.file}: chybí první řádek <!-- url: https://… -->`);
       const r = runSite(site, fx.html, fx.url);
       if (r.blocked) return; // celá stránka se blokuje – obsah je jedno
-      const left = leftovers(r, new URL(fx.url)).map((a) => a.getAttribute('href'));
+      const left = leftovers(r, new URL(fx.url)).map((a) => a.getAttribute('href') || a.tagName.toLowerCase());
       assert.deepEqual(left, [], 'zůstaly viditelné odkazy na krátká videa');
       for (const sel of fx.expectVisible) {
         assert.ok(r.visible(sel).length > 0, `musí zůstat vidět: ${sel}`);
