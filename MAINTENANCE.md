@@ -95,12 +95,36 @@ A k tomu přilož:
 3. `npm test`, zvýším verzi v `package.json`, sestavím a commitnu.
 4. Ty pushneš (nebo pushnu já, když řekneš) a na iPhonu skript aktualizuješ (README → Aktualizace).
 
+### Instagram: čtení kanálu
+
+> **Zjištěno 2026-11-21 (HAR, mobilní i desktopový web):** stránka `/channel/KÓD/` pošle
+> GraphQL dotaz `PolarisChannelLinkRootQuery` (proměnné `{"input":{"num_items":20,"thread_igid":…}}`).
+> Odpověď `data.xfb_igd_channel_web_preview.channel_preview` má `title`, `number_of_members`
+> a `items` (nejnovější první): `item_type` (`TEXT`, `LINK`, `MEDIA`, `MEDIA_SHARE`,
+> `ACTION_LOG`), `text`, `timestamp` (µs), `sender` a `full_item_dict` (JSON jako text:
+> `link.link_context`, `media.image_versions2`/`video_versions`, `direct_media_share.media`,
+> `action_log.description`). Web zprávy nevykreslí. V HTML stránky tahle data nejsou.
+>
+> Jednorázovky (`RAVEN_IMAGE`/`RAVEN_VIDEO` v `IGDThreadDetailQuery`) mají `attachment: null`,
+> médium web nedostane vůbec.
+
+Skript vloží do stránky hook (`igChannelPageHook`), který u dotazů s `ChannelLink`
+v těle (nebo na stránce `/channel/…`) přečte odpověď XHR/fetch a pošle ji událostí
+`noshorts-ig-channel`. CSP Instagramu povoluje jen skripty s nonce, proto hook převezme
+nonce z existujícího `<script nonce>`; záloha je `blob:` URL.
+
+| Příznak | Pravděpodobná příčina |
+|---|---|
+| Na kanálu je dál jen „Use the Instagram app…“ | Hook se nevložil (zapni `debug`, v konzoli hledej `[no-shorts] hook kanálu: …`; `html[data-noshorts-ig-hook]` musí existovat), nebo se změnila odpověď (hledá se klíč `channel_preview`). Pošli HAR stránky kanálu (postup ve `fixtures/README.md`). |
+| Panel je, ale chybí fotky/odkazy | změnila se struktura `full_item_dict`. Pošli HAR. |
+| Panel ukazuje jiný kanál | data přišla k jinému kanálu; pošli postup (odkud jsi kanál otevřel). |
+
 ## Kde co je
 
 | Web | Soubor | Kde hledat |
 |---|---|---|
 | YouTube | `src/sites/youtube.js` | `YT_SHORTS_PATH` (blokované URL), `rules()` (police, záložka, výsledky, hlavní stránka) |
-| Instagram | `src/sites/instagram.js` | `IG_REELS_PATH`, `rules()` (Reels, Explore), `IG_SUGGESTED` + `scan()` (navrhované). Jeden reel: `IG_SINGLE_REEL_PATH` + `blocked()` (zámek ID), `igPickAllowedVideo` (které video je „to jedno“), `igSingleReelScan` (skrytí sousedů, odkazy na jiná ID), `igLockScroll`, `IG_OUTSIDE_EXCEPTIONS` (výjimky pro zprávy). Reel ze zprávy (overlay v `/direct/`): `IG_REEL_ITEM`/`IG_SHARED_ITEM` (`data-reel-type`), `igDirectViewerScan`, `igInstallPlayGuard` |
+| Instagram | `src/sites/instagram.js` | `IG_REELS_PATH`, `rules()` (Reels, Explore), `IG_SUGGESTED` + `scan()` (navrhované). Jeden reel: `IG_SINGLE_REEL_PATH` + `blocked()` (zámek ID), `igPickAllowedVideo` (které video je „to jedno“), `igSingleReelScan` (skrytí sousedů, odkazy na jiná ID), `igLockScroll`, `IG_OUTSIDE_EXCEPTIONS` (výjimky pro zprávy). Reel ze zprávy (overlay v `/direct/`): `IG_REEL_ITEM`/`IG_SHARED_ITEM` (`data-reel-type`), `igDirectViewerScan`, `igInstallPlayGuard`. Kanály: `src/sites/instagram-channel.js` – `igChannelPageHook` (hook ve stránce), `igParseChannelResponse` (rozbor odpovědi), `igChannelSync` (panel podle URL) |
 | Facebook | `src/sites/facebook.js` | `FB_REELS_PATH`, `FB_WATCH_PATH`, `FB_UNIT_SELECTORS`/`FB_FEED` (jak se pozná příspěvek), `*_LABELS` + `scan()` |
 | TikTok | `src/sites/tiktok.js` | blokuje se vše |
 | Společné | `src/core/` | `text.js` (porovnávání popisků CZ/EN), `dom.js` (hledání příspěvku), `blockScreen.js`, `watch.js` (SPA, MutationObserver) |

@@ -22,6 +22,7 @@ import { flagSel } from '../core/style.js';
 import { labelSet, findLabelElements } from '../core/text.js';
 import { climbBelow, inNavigation, siblingBranch, unhideEl, HIDDEN_ATTR } from '../core/dom.js';
 import { logInfo } from '../core/log.js';
+import { IG_CHANNEL_CSS, igChannelInit, igChannelSync } from './instagram-channel.js';
 
 // /reels/, /reels/ID/, /reel/ID/, /uzivatel/reels/
 const IG_REELS_PATH = /^\/(?:[^/]+\/)?reels?(?:\/|$)/i;
@@ -209,6 +210,7 @@ function igRestoreSingle(state) {
 }
 
 // ---------------------------------------------------------------------------
+// Kanály (/channel/…) – čtení posledních zpráv, viz instagram-channel.js.
 
 export const instagramSite = registerSite({
   id: 'instagram',
@@ -219,6 +221,18 @@ export const instagramSite = registerSite({
 
   home(url) {
     return url.origin + '/';
+  },
+
+  css(cfg) {
+    return cfg.channelReader ? IG_CHANNEL_CSS : '';
+  },
+
+  init(win, { cfg, state }) {
+    if (cfg.channelReader) igChannelInit(win, state);
+  },
+
+  onUrl(url, { cfg, state, doc }) {
+    if (cfg.channelReader) igChannelSync(doc, state);
   },
 
   blocked(url, cfg, state = {}) {
@@ -273,6 +287,7 @@ export const instagramSite = registerSite({
   scan(roots, { cfg, url, hide, state = {} }) {
     const doc = roots.length ? roots[0].ownerDocument : null;
     if (!doc) return;
+    if (cfg.channelReader) igChannelSync(doc, state);
 
     const single = cfg.blockReels && cfg.allowSingleReel && igSingleReelId(url.pathname);
     let active = false;

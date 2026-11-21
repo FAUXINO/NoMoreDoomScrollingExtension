@@ -117,3 +117,30 @@ test('build: na nepodporovaném webu skript nic nedělá', () => {
   const dom = load('https://example.com/');
   assert.equal(dom.window.document.getElementById('noshorts-style'), null);
 });
+
+test('build: Instagram – kanál: odpověď z hooku stránky → panel se zprávami', async () => {
+  const dom = load('https://www.instagram.com/channel/AbcDef123/', '<main>Use the Instagram app</main>');
+  const { document: doc, CustomEvent } = dom.window;
+  const response = JSON.stringify({
+    data: {
+      xfb_igd_channel_web_preview: {
+        channel_preview: {
+          thread_igid: '1',
+          title: 'Kanál',
+          number_of_members: 3,
+          items: [{ item_type: 'TEXT', message_id: 'm1', timestamp: '1795000000000000', text: 'Ahoj', sender: { username: 'kamarad' }, full_item_dict: '{}' }],
+        },
+      },
+    },
+  });
+  doc.dispatchEvent(new CustomEvent('noshorts-ig-channel', { detail: response }));
+  const panel = doc.getElementById('noshorts-ig-channel');
+  assert.ok(panel, 'panel kanálu');
+  assert.match(panel.textContent, /Ahoj/);
+  assert.match(doc.getElementById('noshorts-style').textContent, /#noshorts-ig-channel/);
+
+  dom.window.history.pushState({}, '', '/direct/inbox/');
+  doc.body.append(doc.createElement('div'));
+  await tick();
+  assert.equal(doc.getElementById('noshorts-ig-channel'), null, 'po odchodu z kanálu panel zmizí');
+});

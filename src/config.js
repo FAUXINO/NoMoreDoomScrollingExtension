@@ -18,6 +18,7 @@ export const CONFIG = {
     allowSingleReel: true, // reel ze zprávy/odkazu (/reel/ID) se přehraje, ale jen ten jeden – další jsou zablokované
     hideExplore: true, // skrýt mřížku na /explore/ (vyhledávání zůstane)
     hideSuggested: true, // skrýt navrhované příspěvky a účty ve feedu
+    channelReader: true, // kanál (/channel/…): ukázat posledních 20 zpráv, které web stáhne, ale nezobrazí (jen čtení)
   },
 
   facebook: {

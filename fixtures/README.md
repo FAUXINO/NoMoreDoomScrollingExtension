@@ -45,7 +45,7 @@ web, nový snapshot ukáže, co přesně se rozbilo.
 | Web | Doporučené snapshoty |
 |---|---|
 | YouTube | `home.html` (m.youtube.com/), `search.html` (výsledky hledání), `channel.html` (stránka kanálu), `watch.html` (přehrávač) |
-| Instagram | `feed.html` (/), `profile.html` (profil kamaráda), `explore.html` (/explore/), `direct-thread.html` (konverzace s posdíleným reelem), `dm-reel-open.html` (reel otevřený ze zprávy), `dm-reel-next.html` (po swipu na další) |
+| Instagram | `feed.html` (/), `profile.html` (profil kamaráda), `explore.html` (/explore/), `direct-thread.html` (konverzace s posdíleným reelem), `dm-reel-open.html` (reel otevřený ze zprávy), `dm-reel-next.html` (po swipu na další), `direct-inbox.html` (/direct/inbox/), `channel-open.html` (/channel/KÓD/), `viewonce-thread.html` (konverzace s jednorázovkou) |
 | Facebook | `feed.html` (m.facebook.com/), `profile.html`, `video.html` (záložka Video) |
 
 U snapshotů reelů nech skript No Shorts ve Violentmonkey **vypnutý**, jinak by

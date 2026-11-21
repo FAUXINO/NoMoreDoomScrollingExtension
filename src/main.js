@@ -31,7 +31,8 @@ function runSite(win, site, cfg) {
   const doc = win.document;
   const hide = (el, reason) => hideEl(el, site.id + ': ' + reason);
   const rules = safe(site.id + '.rules', () => site.rules(cfg), []);
-  const css = [BASE_CSS, BLOCK_CSS, rulesToCss(rules)].join('\n');
+  const siteCss = safe(site.id + '.css', () => (site.css ? site.css(cfg) : ''), '');
+  const css = [BASE_CSS, BLOCK_CSS, siteCss, rulesToCss(rules)].join('\n');
   const ensureCss = () => ensureStyle(doc, STYLE_ID, css);
   ensureCss();
   logInfo('spuštěno pro', site.id, '(' + rules.length + ' pravidel)');
@@ -48,6 +49,7 @@ function runSite(win, site, cfg) {
     url = new URL(win.location.href);
     const res = safe(site.id + '.blocked', () => site.blocked(url, cfg, state), null) || state.forceBlock;
     setPageFlags(doc, pageFlags());
+    if (site.onUrl) safe(site.id + '.onUrl', () => site.onUrl(url, { cfg, state, doc }));
     const block = normalizeBlock(res, site, url);
     if (block) {
       showBlock(doc, block);
@@ -81,6 +83,7 @@ function runSite(win, site, cfg) {
     if (isDebug()) for (const root of roots) applyRules(root, rules, hide);
   };
 
+  if (site.init) safe(site.id + '.init', () => site.init(win, { cfg, state }));
   applyUrl();
   const checkUrl = watchUrl(win, onUrlChange);
   watchMutations(win, { onMutation: checkUrl, onBatch: scanRoots });

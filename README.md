@@ -7,7 +7,7 @@ které sleduješ, zprávy, profily i běžná videa na YouTube.
 | Web | Co skript dělá |
 |---|---|
 | **YouTube** | Blokuje `/shorts/…`. Skrývá Shorts police, záložku Shorts, Shorts ve výsledcích hledání a na kanálech. Hlavní stránka je bez doporučených videí. |
-| **Instagram** | Blokuje záložku Reels (`/reels/`). Skrývá Reels ve feedu, v navigaci a na profilech, mřížku na Explore (vyhledávání zůstává) a navrhované příspěvky a účty. **Jeden reel ze zprávy nebo z odkazu** se přehraje, ale dál swipovat nejde (viz níže). |
+| **Instagram** | Blokuje záložku Reels (`/reels/`). Skrývá Reels ve feedu, v navigaci a na profilech, mřížku na Explore (vyhledávání zůstává) a navrhované příspěvky a účty. **Jeden reel ze zprávy nebo z odkazu** se přehraje, ale dál swipovat nejde (viz níže). **Kanály** (`/channel/…`) jde číst i na webu (viz níže). |
 | **Facebook** | Blokuje `/reel/…` a záložku Video (`/watch`). Skrývá Reels ve feedu a v navigaci, příspěvky „Navrhované pro vás“ a Příběhy. Jednotlivá videa od přátel zůstávají. |
 | **TikTok** | Blokuje celý web. |
 
@@ -32,6 +32,25 @@ Náhledy reelů v konverzacích zůstávají vidět. Po návratu do zpráv jde o
 poslaný reel. Vypnout se to dá volbou `allowSingleReel: false` v `CONFIG`; pak se
 blokuje každý reel. Na Facebooku a YouTube tato výjimka neplatí, reely a Shorts
 z odkazů tam zůstávají blokované.
+
+### Čtení kanálů (Instagram)
+
+Na odkaz na kanál (`instagram.com/channel/…`) web Instagramu ukáže jen „Use the Instagram
+app on your mobile device to join this channel“. Na pozadí si ale stáhne **posledních
+20 zpráv** kanálu. Skript je zobrazí: texty, odkazy, fotky, videa (spustíš je sám, nehrají
+automaticky) a sdílené příspěvky. Tlačítko **‹** vrátí zpět.
+
+Omezení:
+- jen posledních 20 zpráv, starší web nedostane,
+- jen čtení: odpovídat, reagovat ani se přidat do kanálu na webu nejde,
+- hlasové zprávy, ankety a podobně se ukážou jen jako popisek „zobrazí se jen v aplikaci“.
+
+Skript kvůli tomu vloží do stránky Instagramu malý kód, který si přečte odpověď, kterou
+web stejně stahuje. Žádné vlastní požadavky neposílá. Vypnout se to dá volbou
+`channelReader: false` v `CONFIG`.
+
+**Jednorázové fotky a videa** („This photo can only be replayed once. Use the mobile app
+to view.“) skript zobrazit neumí: server je webu vůbec nepošle.
 
 ---
 
