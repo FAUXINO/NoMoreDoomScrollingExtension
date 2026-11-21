@@ -10,3 +10,6 @@ dist/
 
 # Snapshoty stránek obsahují osobní data – necommitovat (viz fixtures/README.md)
 fixtures/*/
+
+# HAR záznamy ze Sítě obsahují cookies a přihlašovací tokeny – nikdy necommitovat
+*.har

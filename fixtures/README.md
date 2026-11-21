@@ -53,6 +53,23 @@ viewer upravil nebo zablokoval. Snapshot ulož ve chvíli, kdy je reel otevřen�
 a hraje (u `dm-reel-next.html` až po swipu na další). Postup s logováním navigace
 je v [MAINTENANCE.md](../MAINTENANCE.md).
 
+## HAR soubory (záznam ze Sítě)
+
+Někdy je potřeba zjistit, jaká data web stahuje (např. jestli server webu posílá obsah,
+který web nevykreslí). K tomu slouží HAR export z panelu Síť:
+
+1. Firefox: `Ctrl+Shift+M` (iPhone), `Ctrl+Shift+E` (Síť) → ⚙ zaškrtni
+   „Zachovat záznamy“ a „Vypnout mezipaměť“. Skript No Shorts ve Violentmonkey vypni.
+2. Načti stránku (`F5`) a proveď, co je potřeba.
+3. Pravý klik v seznamu požadavků → „Uložit vše jako HAR“ → ulož do
+   `fixtures/instagram/<název>.har`.
+
+**HAR obsahuje cookies a přihlašovací tokeny** (např. `sessionid`). Kdo je má, dostane se
+do tvého účtu. Proto:
+- ukládej ho jen do podsložky `fixtures/<web>/` (a `*.har` je navíc v `.gitignore`),
+- nikam ho neposílej a nepřikládej k issue,
+- po analýze ho smaž: `rm fixtures/instagram/*.har`.
+
 ## Soukromí
 
 Snapshot obsahuje všechno, co jsi na stránce viděl: jména, příspěvky, někdy i náhledy zpráv.
