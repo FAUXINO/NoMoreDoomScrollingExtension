@@ -19,6 +19,7 @@ export const CONFIG = {
     hideExplore: true, // skrýt mřížku na /explore/ (vyhledávání zůstane)
     hideSuggested: true, // skrýt navrhované příspěvky a účty ve feedu
     channelReader: true, // kanál (/channel/…): ukázat posledních 20 zpráv, které web stáhne, ale nezobrazí (jen čtení)
+    channelsInInbox: true, // kanály, které jsi otevřel, ukázat v seznamu chatů (obnova dat 1× za 10 min dotazem na instagram.com)
   },
 
   facebook: {

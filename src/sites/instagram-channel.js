@@ -4,7 +4,8 @@
 // stáhne náhled kanálu – GraphQL dotaz PolarisChannelLinkRootQuery (ověřeno HAR 2026-11),
 // odpověď data.xfb_igd_channel_web_preview.channel_preview.items = posledních 20 zpráv
 // (TEXT, LINK, MEDIA, MEDIA_SHARE, ACTION_LOG; každá s full_item_dict jako JSON string).
-// Skript tuhle odpověď zachytí a zprávy vykreslí jen pro čtení. Žádné vlastní požadavky.
+// Skript tuhle odpověď zachytí a zprávy vykreslí jen pro čtení. Panel sám nic nestahuje;
+// jediný vlastní dotaz je obnova kanálů v seznamu chatů (instagram-channel-list.js).
 //
 // Odpověď čte jen svět stránky (content script nevidí její XHR/fetch). Proto se do stránky
 // vloží malý hook (igChannelPageHook), který odpověď pošle událostí na document.
@@ -13,9 +14,15 @@
 //
 // Jednorázové fotky/videa web zobrazit neumí: server u nich posílá attachment: null.
 import { logInfo, logError } from '../core/log.js';
+import { igLoadChannels, igSaveChannels, igRememberChannel, igVisibleChannels, igChannelsToRefresh, igSyncChannelRows, igChannelCodeFromPath, IG_CHANNEL_REFRESH_MS } from './instagram-channel-list.js';
 
-const IG_CHANNEL_EVENT = 'noshorts-ig-channel';
-const IG_CHANNEL_HOOK_ATTR = 'data-noshorts-ig-hook';
+const IG_CHANNEL_HOOK = {
+  attr: 'data-noshorts-ig-hook',
+  data: 'noshorts-ig-channel',
+  docId: 'noshorts-ig-channel-docid',
+  refresh: 'noshorts-ig-channel-refresh',
+  refreshed: 'noshorts-ig-channel-refreshed',
+};
 const IG_CHANNEL_PANEL_ID = 'noshorts-ig-channel';
 const IG_CHANNEL_PATH = /^\/channel\/[^/]+\/?$/;
 // Data stažená těsně před navigací (Instagram dotaz někdy pošle už při kliknutí) platí jen chvíli.
@@ -27,44 +34,103 @@ export function igIsChannelPath(pathname) {
 
 // --- hook ve světě stránky ---------------------------------------------------
 // Pozor: funkce se do stránky vkládá jako text (toString), nesmí používat nic zvenku.
-export function igChannelPageHook(eventName, hookAttr) {
+// names = { attr, data, docId, refresh, refreshed } – atribut „hook běží“ a názvy událostí:
+//  data      → content script: odpověď dotazu na kanál, který poslal Instagram (detail = text)
+//  docId     → content script: doc_id dotazu PolarisChannelLinkRootQuery (detail = číslo jako text)
+//  refresh   ← content script: obnov kanály (detail = JSON { docId, threadIds })
+//  refreshed → content script: odpověď obnovy (detail = text)
+// Obnova použije parametry relace (fb_dtsg, lsd, hlavičky) z posledního GraphQL dotazu
+// Instagramu; nic z toho se neukládá mimo paměť stránky.
+export function igChannelPageHook(names) {
   const root = document.documentElement;
-  if (root.hasAttribute(hookAttr)) return;
-  root.setAttribute(hookAttr, '1');
+  if (root.hasAttribute(names.attr)) return;
+  root.setAttribute(names.attr, '1');
   const MARKER = 'channel_preview';
+  const FRIENDLY = 'PolarisChannelLinkRootQuery';
+  const info = new WeakMap(); // xhr → { url, headers }
+  const own = new WeakSet(); // vlastní dotazy obnovy
+  let template = null; // { url, headers, body } posledního GraphQL dotazu Instagramu
+  let pending = null;
+
+  const fire = (name, detail) => document.dispatchEvent(new CustomEvent(name, { detail: detail }));
+  const bodyText = (body) => {
+    if (typeof body === 'string') return body;
+    if (body && typeof URLSearchParams === 'function' && body instanceof URLSearchParams) return body.toString();
+    return '';
+  };
   const isChannelRequest = (body) => {
     try {
       if (location.pathname.indexOf('/channel/') === 0) return true;
-      if (typeof body === 'string') return body.indexOf('ChannelLink') !== -1;
+      const text = bodyText(body);
+      if (text) return text.indexOf('ChannelLink') !== -1;
       if (body && typeof body.get === 'function') return String(body.get('fb_api_req_friendly_name') || '').indexOf('ChannelLink') !== -1;
     } catch (e) {
       /* ignorovat */
     }
     return false;
   };
-  const emit = (text) => {
-    if (typeof text !== 'string' || text.indexOf(MARKER) === -1) return;
-    document.dispatchEvent(new CustomEvent(eventName, { detail: text }));
+  const noteRequest = (url, headers, body) => {
+    const text = bodyText(body);
+    if (!text || text.indexOf('doc_id=') === -1 || !/\/api\/graphql\/?(?:\?|$)/.test(String(url))) return;
+    const params = new URLSearchParams(text);
+    if (String(params.get('fb_api_req_friendly_name') || '').indexOf('ChannelLink') !== -1 && /^\d+$/.test(params.get('doc_id') || '')) {
+      fire(names.docId, params.get('doc_id'));
+    }
+    if (params.get('fb_dtsg')) {
+      template = { url: String(url), headers: headers.slice(), body: text };
+      if (pending) {
+        const job = pending;
+        pending = null;
+        refresh(job);
+      }
+    }
   };
+  const emit = (name, text) => {
+    if (typeof text === 'string' && text.indexOf(MARKER) !== -1) fire(name, text);
+  };
+
   const proto = window.XMLHttpRequest && window.XMLHttpRequest.prototype;
-  if (proto && proto.send) {
-    const send = proto.send;
+  const origOpen = proto && proto.open;
+  const origSend = proto && proto.send;
+  const origSetHeader = proto && proto.setRequestHeader;
+  if (proto && origSend && origOpen && origSetHeader) {
+    proto.open = function (method, url) {
+      try {
+        info.set(this, { url: String(url), headers: [] });
+      } catch (e) {
+        /* ignorovat */
+      }
+      return origOpen.apply(this, arguments);
+    };
+    proto.setRequestHeader = function (name, value) {
+      try {
+        const i = info.get(this);
+        if (i) i.headers.push([String(name), String(value)]);
+      } catch (e) {
+        /* ignorovat */
+      }
+      return origSetHeader.apply(this, arguments);
+    };
     proto.send = function (body) {
       try {
-        if (isChannelRequest(body)) {
-          this.addEventListener('load', function () {
-            try {
-              if (this.responseType === '' || this.responseType === 'text') emit(this.responseText);
-              else if (this.responseType === 'json') emit(JSON.stringify(this.response));
-            } catch (e) {
-              /* ignorovat */
-            }
-          });
+        if (!own.has(this)) {
+          const i = info.get(this);
+          if (i) noteRequest(i.url, i.headers, body);
+          if (isChannelRequest(body)) {
+            this.addEventListener('load', function () {
+              try {
+                if (this.responseType === '' || this.responseType === 'text') emit(names.data, this.responseText);
+                else if (this.responseType === 'json') emit(names.data, JSON.stringify(this.response));
+              } catch (e) {
+                /* ignorovat */
+              }
+            });
+          }
         }
       } catch (e) {
         /* ignorovat */
       }
-      return send.apply(this, arguments);
+      return origSend.apply(this, arguments);
     };
   }
   const origFetch = window.fetch;
@@ -72,8 +138,15 @@ export function igChannelPageHook(eventName, hookAttr) {
     window.fetch = function (input, init) {
       const p = origFetch.apply(this, arguments);
       try {
-        if (isChannelRequest(init && init.body)) {
-          p.then((res) => res.clone().text()).then(emit, () => {});
+        const body = init && init.body;
+        if (bodyText(body)) {
+          const url = typeof input === 'string' ? input : (input && input.url) || '';
+          const h = init && init.headers;
+          const headers = !h ? [] : typeof h.forEach === 'function' && !Array.isArray(h) ? (() => { const a = []; h.forEach((v, k) => a.push([k, v])); return a; })() : Array.isArray(h) ? h.slice() : Object.keys(h).map((k) => [k, h[k]]);
+          noteRequest(url, headers, body);
+        }
+        if (isChannelRequest(body)) {
+          p.then((res) => res.clone().text()).then((t) => emit(names.data, t), () => {});
         }
       } catch (e) {
         /* ignorovat */
@@ -81,10 +154,58 @@ export function igChannelPageHook(eventName, hookAttr) {
       return p;
     };
   }
+
+  // Obnova kanálů: jeden dotaz na kanál, postupně, se stejnými parametry jako Instagram.
+  function refresh(job) {
+    if (!template || !origOpen) {
+      pending = job;
+      return;
+    }
+    const ids = job.threadIds.filter((id) => /^\d+$/.test(id));
+    let i = 0;
+    const next = () => {
+      if (i >= ids.length) return;
+      const id = ids[i++];
+      try {
+        const params = new URLSearchParams(template.body);
+        params.set('fb_api_req_friendly_name', FRIENDLY);
+        params.set('variables', '{"input":{"num_items":1,"thread_igid":' + id + '}}');
+        params.set('doc_id', job.docId);
+        params.set('server_timestamps', 'true');
+        const xhr = new XMLHttpRequest();
+        own.add(xhr);
+        origOpen.call(xhr, 'POST', template.url, true);
+        for (const [k, v] of template.headers) {
+          if (/^x-fb-friendly-name$/i.test(k)) origSetHeader.call(xhr, k, FRIENDLY);
+          else origSetHeader.call(xhr, k, v);
+        }
+        xhr.addEventListener('loadend', function () {
+          try {
+            if (this.status === 200) emit(names.refreshed, this.responseText);
+          } catch (e) {
+            /* ignorovat */
+          }
+          setTimeout(next, 400);
+        });
+        origSend.call(xhr, params.toString());
+      } catch (e) {
+        setTimeout(next, 400);
+      }
+    };
+    next();
+  }
+  document.addEventListener(names.refresh, (e) => {
+    try {
+      const job = JSON.parse(e.detail);
+      if (job && /^\d+$/.test(String(job.docId)) && Array.isArray(job.threadIds)) refresh({ docId: String(job.docId), threadIds: job.threadIds.map(String) });
+    } catch (err) {
+      /* ignorovat */
+    }
+  });
 }
 
 function igHookInstalled(doc) {
-  return doc.documentElement.hasAttribute(IG_CHANNEL_HOOK_ATTR);
+  return doc.documentElement.hasAttribute(IG_CHANNEL_HOOK.attr);
 }
 
 function igInjectCode(doc, code) {
@@ -120,7 +241,7 @@ function igInjectCode(doc, code) {
 
 // Vloží hook co nejdřív, ale až když stránka má <script nonce> (na document-start ještě není).
 function igInstallPageHook(doc) {
-  const code = `(${igChannelPageHook.toString()})(${JSON.stringify(IG_CHANNEL_EVENT)}, ${JSON.stringify(IG_CHANNEL_HOOK_ATTR)});`;
+  const code = `(${igChannelPageHook.toString()})(${JSON.stringify(IG_CHANNEL_HOOK)});`;
   let done = false;
   let mo = null;
   const attempt = () => {
@@ -259,6 +380,7 @@ export function igParseChannelResponse(text) {
     return {
       threadId: String(preview.thread_igid || ''),
       title: typeof preview.title === 'string' ? preview.title : '',
+      image: igSafeUrl(preview.group_image_uri) || igSafeUrl(preview.creator && preview.creator.profile_picture && preview.creator.profile_picture.uri),
       members: Number.isFinite(preview.number_of_members) ? preview.number_of_members : null,
       items,
     };
@@ -276,7 +398,9 @@ export const IG_CHANNEL_CSS = `
 #${IG_CHANNEL_PANEL_ID} .ns-head{display:flex;align-items:center;gap:12px;padding:10px 12px;
   padding-top:max(10px,env(safe-area-inset-top));border-bottom:1px solid #e4e4e7}
 #${IG_CHANNEL_PANEL_ID} .ns-back{border:0;background:none;color:inherit;font-size:26px;line-height:1;padding:4px 8px;cursor:pointer}
-#${IG_CHANNEL_PANEL_ID} .ns-head-text{min-width:0}
+#${IG_CHANNEL_PANEL_ID} .ns-head-text{min-width:0;flex:1}
+#${IG_CHANNEL_PANEL_ID} .ns-toggle{border:1px solid currentColor;border-radius:8px;background:none;color:inherit;
+  font-size:13px;padding:6px 10px;cursor:pointer;white-space:nowrap}
 #${IG_CHANNEL_PANEL_ID} .ns-title{margin:0;font-size:17px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #${IG_CHANNEL_PANEL_ID} .ns-sub{margin:0;font-size:13px;color:#71717a}
 #${IG_CHANNEL_PANEL_ID} .ns-list{flex:1;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
@@ -396,7 +520,7 @@ function igRenderItem(doc, item) {
   return box;
 }
 
-function igBuildPanel(doc, data) {
+function igBuildPanel(doc, data, opts = {}) {
   const panel = el(doc, 'div');
   panel.id = IG_CHANNEL_PANEL_ID;
   const head = el(doc, 'div', 'ns-head');
@@ -413,6 +537,7 @@ function igBuildPanel(doc, data) {
   const sub = [data.members != null ? data.members + ' členů' : '', 'jen čtení'].filter(Boolean).join(' · ');
   headText.append(el(doc, 'p', 'ns-sub', sub));
   head.append(back, headText);
+  if (opts.toggle) head.append(opts.toggle);
 
   const list = el(doc, 'div', 'ns-list');
   for (const item of data.items) list.append(igRenderItem(doc, item));
@@ -447,12 +572,71 @@ export function igChannelSync(doc, state, now = Date.now()) {
     panel = null;
   }
   if (!panel) {
-    panel = igBuildPanel(doc, state.channel.data);
+    const code = igChannelCodeFromPath(path);
+    const toggle = state.channelList && code ? igChannelToggle(doc, state, code, state.channel.data, now) : null;
+    panel = igBuildPanel(doc, state.channel.data, { toggle });
     panel.dataset.key = state.channel.key;
     logInfo('kanál: zobrazeno', state.channel.data.items.length, 'zpráv');
   }
   // Do <html> (vedle <body>), aby panel nesmazal React při překreslení stránky.
   if (!panel.isConnected) doc.documentElement.appendChild(panel);
+}
+
+// Zapamatuje otevřený kanál (pokud ho uživatel neodebral) a vrátí tlačítko Odebrat/Přidat do zpráv.
+function igChannelToggle(doc, state, code, data, now) {
+  const win = doc.defaultView;
+  const store = igLoadChannels(win);
+  const known = store.channels[code];
+  if (!known || !known.hidden) {
+    igRememberChannel(store, data, { code, now, opened: true });
+    igSaveChannels(win, store);
+  }
+  const btn = el(doc, 'button', 'ns-toggle');
+  btn.type = 'button';
+  const label = () => {
+    const c = igLoadChannels(win).channels[code];
+    btn.textContent = c && !c.hidden ? 'Odebrat ze zpráv' : 'Přidat do zpráv';
+  };
+  label();
+  btn.addEventListener('click', () => {
+    const st = igLoadChannels(win);
+    const c = st.channels[code] || igRememberChannel(st, data, { code, now: Date.now(), opened: true });
+    c.hidden = !c.hidden;
+    igSaveChannels(win, st);
+    logInfo('kanál', code, c.hidden ? 'odebrán ze zpráv' : 'přidán do zpráv');
+    label();
+  });
+  return btn;
+}
+
+// Seznam chatů: řádky kanálů + obnova jejich dat (nejvýš jednou za IG_CHANNEL_REFRESH_MS).
+export function igChannelListSync(doc, state, now = Date.now()) {
+  if (!state.channelList) return;
+  const win = doc.defaultView;
+  if (!/^\/direct(?:\/|$)/.test(win.location.pathname)) return;
+  const store = igLoadChannels(win);
+  igSyncChannelRows(doc, igVisibleChannels(store), now);
+  if (!store.docId) return; // doc_id se dozví až při prvním otevření kanálu
+  state.refreshAsked = state.refreshAsked || {};
+  const due = igChannelsToRefresh(store, now).filter((c) => !(state.refreshAsked[c.code] && now - state.refreshAsked[c.code] < IG_CHANNEL_REFRESH_MS));
+  if (!due.length) return;
+  for (const c of due) state.refreshAsked[c.code] = now;
+  logInfo('obnova kanálů:', due.map((c) => c.code).join(', '));
+  doc.dispatchEvent(
+    new win.CustomEvent(IG_CHANNEL_HOOK.refresh, { detail: JSON.stringify({ docId: store.docId, threadIds: due.map((c) => c.threadId) }) }),
+  );
+}
+
+// Odpověď obnovy z hooku → aktualizovat uložený kanál a řádek v seznamu.
+export function igChannelRefreshed(doc, state, text, now = Date.now()) {
+  const data = igParseChannelResponse(text);
+  if (!data) return false;
+  const win = doc.defaultView;
+  const store = igLoadChannels(win);
+  if (!igRememberChannel(store, data, { now })) return false;
+  igSaveChannels(win, store);
+  igChannelListSync(doc, state, now);
+  return true;
 }
 
 // Přijme odpověď z hooku (detail = text odpovědi) a uloží ji do stavu.
@@ -464,14 +648,27 @@ export function igChannelReceive(doc, state, text, now = Date.now()) {
   return true;
 }
 
-export function igChannelInit(win, state) {
+export function igChannelInit(win, state, { list = false } = {}) {
   const doc = win.document;
-  doc.addEventListener(IG_CHANNEL_EVENT, (e) => {
-    try {
-      if (typeof e.detail === 'string') igChannelReceive(doc, state, e.detail);
-    } catch (err) {
-      logError('instagram.channel', err);
-    }
-  });
+  state.channelList = list;
+  const on = (name, fn) =>
+    doc.addEventListener(name, (e) => {
+      try {
+        if (typeof e.detail === 'string') fn(e.detail);
+      } catch (err) {
+        logError('instagram.channel', err);
+      }
+    });
+  on(IG_CHANNEL_HOOK.data, (text) => igChannelReceive(doc, state, text));
+  if (list) {
+    on(IG_CHANNEL_HOOK.docId, (docId) => {
+      if (!/^\d+$/.test(docId)) return;
+      const store = igLoadChannels(win);
+      if (store.docId === docId) return;
+      store.docId = docId;
+      igSaveChannels(win, store);
+    });
+    on(IG_CHANNEL_HOOK.refreshed, (text) => igChannelRefreshed(doc, state, text));
+  }
   igInstallPageHook(doc);
 }

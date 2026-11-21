@@ -193,38 +193,77 @@ test('kanál: data stažená těsně před navigací (po kliknutí) se použijí
   dom.window.close();
 });
 
-test('kanál: hook ve stránce pošle odpověď dotazu na kanál (XHR i fetch), jiné ne', async () => {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', {
-    url: 'https://www.instagram.com/direct/inbox/',
-    runScripts: 'outside-only',
-  });
+const NAMES = { attr: 'data-hook-test', data: 'ev-data', docId: 'ev-doc', refresh: 'ev-refresh', refreshed: 'ev-refreshed' };
+
+// Stránka s falešným XHR/fetch a vloženým hookem. Vrací zachycené události a odeslané dotazy.
+function hookPage(path = '/direct/inbox/') {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://www.instagram.com' + path, runScripts: 'outside-only' });
   const win = dom.window;
   win.__resp = RESPONSE;
+  win.__sent = [];
   win.eval(`
     class FakeXHR extends EventTarget {
-      constructor() { super(); this.responseType = ''; this.responseText = ''; }
-      send(body) { this.responseText = window.__resp; this.dispatchEvent(new Event('load')); }
+      constructor() { super(); this.responseType = ''; this.responseText = ''; this.status = 0; this.headers = []; window.__sent.push(this); }
+      open(method, url) { this.method = method; this.url = url; }
+      setRequestHeader(k, v) { this.headers.push([k, v]); }
+      send(body) { this.body = body; this.status = 200; this.responseText = window.__resp; this.dispatchEvent(new Event('load')); this.dispatchEvent(new Event('loadend')); }
     }
     window.XMLHttpRequest = FakeXHR;
     window.fetch = async () => ({ clone: () => ({ text: async () => window.__resp }) });
   `);
-  win.eval(`(${igChannelPageHook.toString()})('ev-test', 'data-hook-test')`);
-  win.eval(`(${igChannelPageHook.toString()})('ev-test', 'data-hook-test')`); // podruhé nic nepřebalí
+  win.eval(`(${igChannelPageHook.toString()})(${JSON.stringify(NAMES)})`);
+  win.eval(`(${igChannelPageHook.toString()})(${JSON.stringify(NAMES)})`); // podruhé nic nepřebalí
+  const got = { data: [], doc: [], refreshed: [] };
+  win.document.addEventListener('ev-data', (e) => got.data.push(e.detail));
+  win.document.addEventListener('ev-doc', (e) => got.doc.push(e.detail));
+  win.document.addEventListener('ev-refreshed', (e) => got.refreshed.push(e.detail));
+  const pageRequest = (friendly, extra = '') => {
+    const xhr = new win.XMLHttpRequest();
+    xhr.open('POST', '/api/graphql');
+    xhr.setRequestHeader('X-FB-Friendly-Name', friendly);
+    xhr.setRequestHeader('X-CSRFToken', 'tok');
+    xhr.send(`av=1&fb_dtsg=DTSG&lsd=LSD&fb_api_req_friendly_name=${friendly}&variables=%7B%7D&doc_id=${extra || '111'}`);
+  };
+  const askRefresh = (detail) => win.document.dispatchEvent(new win.CustomEvent('ev-refresh', { detail: JSON.stringify(detail) }));
+  return { win, got, pageRequest, askRefresh };
+}
+
+test('kanál: hook ve stránce pošle odpověď dotazu na kanál (XHR i fetch), jiné ne', async () => {
+  const { win, got, pageRequest } = hookPage();
   assert.ok(win.document.documentElement.hasAttribute('data-hook-test'));
 
-  const got = [];
-  win.document.addEventListener('ev-test', (e) => got.push(e.detail));
-  const send = (body) => new win.XMLHttpRequest().send(body);
+  pageRequest('PolarisChannelLinkRootQuery', '999');
+  assert.equal(got.data.length, 1, 'XHR dotaz na kanál');
+  assert.equal(got.data[0], RESPONSE);
+  assert.deepEqual(got.doc, ['999'], 'doc_id dotazu na kanál');
 
-  send('fb_api_req_friendly_name=PolarisChannelLinkRootQuery&variables=%7B%7D');
-  assert.equal(got.length, 1, 'XHR dotaz na kanál');
-  assert.equal(got[0], RESPONSE);
-
-  send('fb_api_req_friendly_name=PolarisFeedTimelineRootV2Query');
-  assert.equal(got.length, 1, 'jiný dotaz se ignoruje');
+  pageRequest('PolarisFeedTimelineRootV2Query');
+  assert.equal(got.data.length, 1, 'jiný dotaz se ignoruje');
 
   await win.fetch('/api/graphql', { body: new win.URLSearchParams('fb_api_req_friendly_name=PolarisChannelLinkRootQuery') });
   await new Promise((r) => setTimeout(r, 0));
-  assert.equal(got.length, 2, 'fetch dotaz na kanál');
+  assert.equal(got.data.length, 2, 'fetch dotaz na kanál');
+  win.close();
+});
+
+test('kanál: obnova – hook zopakuje dotaz s parametry relace Instagramu, jen pro požadované vlákno', () => {
+  const { win, got, pageRequest, askRefresh } = hookPage();
+  askRefresh({ docId: '999', threadIds: ['123456', 'x"; alert(1)'] }); // bez šablony čeká
+  assert.equal(win.__sent.length, 0);
+
+  pageRequest('PolarisDirectInboxQuery');
+  const sent = win.__sent[1];
+  assert.ok(sent, 'po prvním dotazu Instagramu se obnova odeslala');
+  assert.equal(sent.method, 'POST');
+  assert.equal(sent.url, '/api/graphql');
+  const params = new URLSearchParams(sent.body);
+  assert.equal(params.get('fb_api_req_friendly_name'), 'PolarisChannelLinkRootQuery');
+  assert.equal(params.get('variables'), '{"input":{"num_items":1,"thread_igid":123456}}');
+  assert.equal(params.get('doc_id'), '999');
+  assert.equal(params.get('fb_dtsg'), 'DTSG');
+  assert.equal(JSON.stringify(sent.headers), JSON.stringify([['X-FB-Friendly-Name', 'PolarisChannelLinkRootQuery'], ['X-CSRFToken', 'tok']]));
+  assert.equal(got.refreshed.length, 1, 'odpověď obnovy');
+  assert.equal(got.data.length, 0, 'obnova se nebere jako otevřený kanál');
+  assert.equal(win.__sent.length, 2, 'neplatné ID vlákna se neposílá');
   win.close();
 });

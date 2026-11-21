@@ -7,12 +7,14 @@ které sleduješ, zprávy, profily i běžná videa na YouTube.
 | Web | Co skript dělá |
 |---|---|
 | **YouTube** | Blokuje `/shorts/…`. Skrývá Shorts police, záložku Shorts, Shorts ve výsledcích hledání a na kanálech. Hlavní stránka je bez doporučených videí. |
-| **Instagram** | Blokuje záložku Reels (`/reels/`). Skrývá Reels ve feedu, v navigaci a na profilech, mřížku na Explore (vyhledávání zůstává) a navrhované příspěvky a účty. **Jeden reel ze zprávy nebo z odkazu** se přehraje, ale dál swipovat nejde (viz níže). **Kanály** (`/channel/…`) jde číst i na webu (viz níže). |
+| **Instagram** | Blokuje záložku Reels (`/reels/`). Skrývá Reels ve feedu, v navigaci a na profilech, mřížku na Explore (vyhledávání zůstává) a navrhované příspěvky a účty. **Jeden reel ze zprávy nebo z odkazu** se přehraje, ale dál swipovat nejde (viz níže). **Kanály** (`/channel/…`) jde číst i na webu a jsou v seznamu chatů (viz níže). |
 | **Facebook** | Blokuje `/reel/…` a záložku Video (`/watch`). Skrývá Reels ve feedu a v navigaci, příspěvky „Navrhované pro vás“ a Příběhy. Jednotlivá videa od přátel zůstávají. |
 | **TikTok** | Blokuje celý web. |
 
 Na zablokované stránce se místo obsahu zobrazí obrazovka **„Zablokováno“** s tlačítkem
-zpět na hlavní stránku. Skript nedělá žádné síťové požadavky a nemá žádnou telemetrii.
+zpět na hlavní stránku. Skript nemá žádnou telemetrii a jinam než na samotný web nic
+neposílá. Jedinou výjimkou je obnova kanálů v seznamu chatů na Instagramu (viz níže):
+jeden dotaz na instagram.com za kanál, nejvýš jednou za 10 minut.
 
 ### Jeden reel ze zprávy (Instagram)
 
@@ -46,8 +48,23 @@ Omezení:
 - hlasové zprávy, ankety a podobně se ukážou jen jako popisek „zobrazí se jen v aplikaci“.
 
 Skript kvůli tomu vloží do stránky Instagramu malý kód, který si přečte odpověď, kterou
-web stejně stahuje. Žádné vlastní požadavky neposílá. Vypnout se to dá volbou
-`channelReader: false` v `CONFIG`.
+web stejně stahuje. Samotný panel žádné vlastní požadavky neposílá (fotky a náhledy
+načte prohlížeč z Instagramu jako u každé zprávy, video až po spuštění). Vypnout se to
+dá volbou `channelReader: false` v `CONFIG`.
+
+**Kanály v seznamu chatů.** Web kanály do seznamu chatů vůbec nenačítá. Skript si proto
+pamatuje kanály, které jsi otevřel (v tomto prohlížeči), a vloží je do seznamu chatů
+mezi ostatní konverzace: stejný řádek jako u chatu (fotka, název, poslední zpráva, čas),
+seřazené podle poslední zprávy. Klepnutím se kanál otevře.
+
+- Kanál se do seznamu přidá, když ho poprvé otevřeš z odkazu. Tlačítkem **Odebrat ze
+  zpráv** v panelu kanálu ho odebereš (a **Přidat do zpráv** zase vrátíš).
+- Poslední zprávu a čas skript v seznamu chatů obnovuje stejným dotazem, jaký posílá
+  stránka kanálu, nejvýš jednou za 10 minut na kanál. Před první obnovou je potřeba
+  po aktualizaci skriptu jednou otevřít libovolný kanál (skript se tím dozví, jak dotaz vypadá).
+- Instagram u řádků chatů ukazuje jen přibližný čas („2h“, „1d“) a u některých žádný,
+  řazení je proto přibližné.
+- Vypnout: `channelsInInbox: false` v `CONFIG` (čtení kanálu z odkazu zůstane).
 
 **Jednorázové fotky a videa** („This photo can only be replayed once. Use the mobile app
 to view.“) skript zobrazit neumí: server je webu vůbec nepošle.

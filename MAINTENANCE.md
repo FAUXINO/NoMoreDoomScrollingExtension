@@ -119,12 +119,33 @@ nonce z existujícího `<script nonce>`; záloha je `blob:` URL.
 | Panel je, ale chybí fotky/odkazy | změnila se struktura `full_item_dict`. Pošli HAR. |
 | Panel ukazuje jiný kanál | data přišla k jinému kanálu; pošli postup (odkud jsi kanál otevřel). |
 
+### Instagram: kanály v seznamu chatů
+
+> **Zjištěno 2026-11-21 (HAR):** seznam chatů (`PolarisDirectInboxMobileQuery`, desktop
+> `PolarisDirectInboxQuery`) kanály neobsahuje. První stránka (16 vláken, aktivita
+> 23. 10.–21. 11.) neměla kanál, i když v něm 21. 11. přišla zpráva. Řádky seznamu jsou
+> `div[role="button"]` bez odkazu a bez ID vlákna, pod `data-pagelet="IGDInboxThreadListScrollableAreaPagelet"`;
+> čas je v `<abbr aria-label="14 minutes ago">` (ne u všech řádků), připnutí `svg[aria-label="Pinned"]`.
+
+Skript si kanály pamatuje v `localStorage` (`noshorts-ig-channels`: kanály + `docId` dotazu).
+Řádek kanálu je klon řádku Instagramu s vyměněnou fotkou, názvem, zprávou a časem, vložený
+před první nepřipnutý řádek se starším časem. Obnova: hook zopakuje `PolarisChannelLinkRootQuery`
+s `{"input":{"num_items":1,"thread_igid":…}}`, `doc_id` uloženým z posledního otevření kanálu
+a parametry relace (`fb_dtsg`, `lsd`, hlavičky) z posledního GraphQL dotazu Instagramu.
+
+| Příznak | Pravděpodobná příčina |
+|---|---|
+| Kanály v seznamu chatů nejsou | změnil se `data-pagelet` seznamu nebo řádky nejsou `div[role="button"]` s `<img>`. Pošli snapshot `/direct/inbox/` (`direct-inbox.html`). |
+| Řádek kanálu vypadá jinak než chaty | změnila se struktura řádku (`span[dir="auto"]` název/zpráva, `<abbr>` čas). Pošli snapshot. |
+| Poslední zpráva v řádku se neobnovuje | `doc_id` se změnil (otevři kanál z odkazu, uloží se nový), nebo server odmítá `num_items: 1`. Zapni `debug`, hledej `[no-shorts] obnova kanálů`, a pošli HAR seznamu chatů. |
+| Kanál je ve špatném místě seznamu | Instagram změnil formát času v `abbr` (viz `igParseRelativeTime`). |
+
 ## Kde co je
 
 | Web | Soubor | Kde hledat |
 |---|---|---|
 | YouTube | `src/sites/youtube.js` | `YT_SHORTS_PATH` (blokované URL), `rules()` (police, záložka, výsledky, hlavní stránka) |
-| Instagram | `src/sites/instagram.js` | `IG_REELS_PATH`, `rules()` (Reels, Explore), `IG_SUGGESTED` + `scan()` (navrhované). Jeden reel: `IG_SINGLE_REEL_PATH` + `blocked()` (zámek ID), `igPickAllowedVideo` (které video je „to jedno“), `igSingleReelScan` (skrytí sousedů, odkazy na jiná ID), `igLockScroll`, `IG_OUTSIDE_EXCEPTIONS` (výjimky pro zprávy). Reel ze zprávy (overlay v `/direct/`): `IG_REEL_ITEM`/`IG_SHARED_ITEM` (`data-reel-type`), `igDirectViewerScan`, `igInstallPlayGuard`. Kanály: `src/sites/instagram-channel.js` – `igChannelPageHook` (hook ve stránce), `igParseChannelResponse` (rozbor odpovědi), `igChannelSync` (panel podle URL) |
+| Instagram | `src/sites/instagram.js` | `IG_REELS_PATH`, `rules()` (Reels, Explore), `IG_SUGGESTED` + `scan()` (navrhované). Jeden reel: `IG_SINGLE_REEL_PATH` + `blocked()` (zámek ID), `igPickAllowedVideo` (které video je „to jedno“), `igSingleReelScan` (skrytí sousedů, odkazy na jiná ID), `igLockScroll`, `IG_OUTSIDE_EXCEPTIONS` (výjimky pro zprávy). Reel ze zprávy (overlay v `/direct/`): `IG_REEL_ITEM`/`IG_SHARED_ITEM` (`data-reel-type`), `igDirectViewerScan`, `igInstallPlayGuard`. Kanály: `src/sites/instagram-channel.js` – `igChannelPageHook` (hook ve stránce, obnova), `igParseChannelResponse` (rozbor odpovědi), `igChannelSync` (panel podle URL), `igChannelListSync` (seznam chatů). `src/sites/instagram-channel-list.js` – úložiště, `igFindInboxList`, `igBuildChannelRow`, `igChannelPlacement` (řazení), `igParseRelativeTime` |
 | Facebook | `src/sites/facebook.js` | `FB_REELS_PATH`, `FB_WATCH_PATH`, `FB_UNIT_SELECTORS`/`FB_FEED` (jak se pozná příspěvek), `*_LABELS` + `scan()` |
 | TikTok | `src/sites/tiktok.js` | blokuje se vše |
 | Společné | `src/core/` | `text.js` (porovnávání popisků CZ/EN), `dom.js` (hledání příspěvku), `blockScreen.js`, `watch.js` (SPA, MutationObserver) |

@@ -22,7 +22,7 @@ import { flagSel } from '../core/style.js';
 import { labelSet, findLabelElements } from '../core/text.js';
 import { climbBelow, inNavigation, siblingBranch, unhideEl, HIDDEN_ATTR } from '../core/dom.js';
 import { logInfo } from '../core/log.js';
-import { IG_CHANNEL_CSS, igChannelInit, igChannelSync } from './instagram-channel.js';
+import { IG_CHANNEL_CSS, igChannelInit, igChannelSync, igChannelListSync } from './instagram-channel.js';
 
 // /reels/, /reels/ID/, /reel/ID/, /uzivatel/reels/
 const IG_REELS_PATH = /^\/(?:[^/]+\/)?reels?(?:\/|$)/i;
@@ -228,11 +228,13 @@ export const instagramSite = registerSite({
   },
 
   init(win, { cfg, state }) {
-    if (cfg.channelReader) igChannelInit(win, state);
+    if (cfg.channelReader) igChannelInit(win, state, { list: !!cfg.channelsInInbox });
   },
 
   onUrl(url, { cfg, state, doc }) {
-    if (cfg.channelReader) igChannelSync(doc, state);
+    if (!cfg.channelReader) return;
+    igChannelSync(doc, state);
+    igChannelListSync(doc, state);
   },
 
   blocked(url, cfg, state = {}) {
@@ -287,7 +289,10 @@ export const instagramSite = registerSite({
   scan(roots, { cfg, url, hide, state = {} }) {
     const doc = roots.length ? roots[0].ownerDocument : null;
     if (!doc) return;
-    if (cfg.channelReader) igChannelSync(doc, state);
+    if (cfg.channelReader) {
+      igChannelSync(doc, state);
+      igChannelListSync(doc, state);
+    }
 
     const single = cfg.blockReels && cfg.allowSingleReel && igSingleReelId(url.pathname);
     let active = false;
